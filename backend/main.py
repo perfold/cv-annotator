@@ -21,6 +21,7 @@ def extract_frames(video_path, output_folder):
     os.makedirs(output_folder, exist_ok=True)
 
     cap = cv2.VideoCapture(video_path)
+    fps = cap.get(cv2.CAP_PROP_FPS)
     frame_idx = 0
 
     while True:
@@ -31,7 +32,7 @@ def extract_frames(video_path, output_folder):
         frame_idx += 1
 
     cap.release()
-    return(frame_idx)
+    return(frame_idx, fps)
 
 @app.post("/upload-video")
 
@@ -47,11 +48,12 @@ async def upload_video(file: UploadFile = File(...)):
     with open(video_path, "wb") as f:
         f.write(contents)
 
-    frame_count = extract_frames(video_path, output_folder)
+    frame_count, fps = extract_frames(video_path, output_folder)
 
     return {
         "video_name": video_name,
         "frame_count": frame_count,
+        "frame_rate": fps, 
     }
 
 # function to get frame
