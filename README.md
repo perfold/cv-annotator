@@ -32,7 +32,7 @@ uvicorn main:app --reload # to run FastAPI backend
 ### Basic Features
 - [x] Function for user to upload video sequence for annotation (video will be auto split into frames in the annotation tool) 
 - [ ] Function to add configurable class labels for the video sequence/ project 
-- [ ] Function to step forwards and backwards between frames 
+- [x] Function to step forwards and backwards between frames 
 - [ ] Function to manually draw upright bboxes 
 - [ ] Function to add configurable tags to bboxes (e.g. of tags: occluded, blur)
 - [ ] Function to zoom in/out of image

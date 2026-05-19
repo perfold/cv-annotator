@@ -1,4 +1,5 @@
 from fastapi import FastAPI, File, UploadFile
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import os
 import cv2
@@ -12,12 +13,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# diagnostic, to test if fastAPI is working
-@app.get("/health")
-def health():
-    return {"status": "everything's working 👁️👄👁️"}
-
-# function that takes in video upload, and breaks it up into individual frames
 DATA_DIR = "../data"
 INPUT_DIR = os.path.join(DATA_DIR, "input")
 OUTPUT_DIR = os.path.join(DATA_DIR, "output")
@@ -40,6 +35,7 @@ def extract_frames(video_path, output_folder):
 
 @app.post("/upload-video")
 
+# function that takes in video upload, and breaks it up into individual frames
 async def upload_video(file: UploadFile = File(...)):
 
     video_name = os.path.splitext(file.filename)[0]
@@ -57,3 +53,9 @@ async def upload_video(file: UploadFile = File(...)):
         "video_name": video_name,
         "frame_count": frame_count,
     }
+
+# function to get frame
+@app.get("/frame/{video_name}/{frame_idx}")
+def get_frame(video_name: str, frame_idx: int):
+    frame_path = os.path.join(OUTPUT_DIR, video_name, f"{frame_idx:07d}.jpg")
+    return FileResponse(frame_path)
