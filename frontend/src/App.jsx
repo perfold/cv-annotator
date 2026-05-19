@@ -10,7 +10,7 @@ function App() {
   const [fps, setFps] = useState(30)
   const [isPlaying, setIsPlaying] = useState(false)
   const intervalRef = useRef(null)
-
+  const [frameInterval, setFrameInterval] = useState(10) // user definable keyframe interval
 
   // class labels
   const [classes, setClasses] = useState([]) // list of existing classes
@@ -50,8 +50,10 @@ function App() {
   useEffect(() => {
     if (!videoName) return
     function handleKeyDown(e) {
-      if (e.key === "ArrowLeft") prevFrame()
+      if (e.key === "ArrowLeft") prevFrame() // regular 1 frame skip
       if (e.key === "ArrowRight") nextFrame()
+      if (e.key === ",") setCurrentFrame(f => Math.max(0, f - frameInterval)) // keyframe interval skip
+      if (e.key === ".") setCurrentFrame(f => Math.min(frameCount - 1, f + frameInterval)) // mapped to unshifted < > keys
       if (e.key === " ") {
         e.preventDefault() // to prevent spacebar from triggering file explorer directly after video upload
         setIsPlaying(p => !p)
@@ -59,7 +61,7 @@ function App() {
     }
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [videoName, frameCount])
+  }, [videoName, frameCount, frameInterval])
 
   // video playback
   useEffect(() => {
@@ -92,7 +94,7 @@ function App() {
     if (activeClass === className) setActiveClass(null)
   }
 
-  // UI block
+// UI block
 return (
   <div style={{ display: "flex", height: "100vh", textAlign: "center" }}>
 
@@ -113,7 +115,11 @@ return (
           <li
             key={className}
             onClick={() => setActiveClass(className)} 
-            style={{ fontWeight: activeClass === className ? "bold" : "normal", cursor: "pointer" }}
+            style={{ 
+              fontWeight: activeClass === className ? "bold" : "normal", 
+              backgroundColor: activeClass === className ? "#750000" : "transparent", 
+              cursor: "pointer"
+            }}
           > {/* select class on click */}
             {className}
             <button onClick={(e) => { e.stopPropagation(); deleteClass(className) }}>x</button>
@@ -137,9 +143,22 @@ return (
             style={{ maxHeight: "85vh", width: "auto"}}
           /> {/* calls fastAPI for image */}
           <div>
-            <button onClick={prevFrame} disabled={currentFrame === 0}>Prev</button> {/* back button */}
+            <button onClick={() => setCurrentFrame(f => Math.max(0, f - frameInterval))} disabled={currentFrame === 0}>{"<<"}</button> {/* interval back */}
+            <button onClick={prevFrame} disabled={currentFrame === 0}>{"<"}</button> {/* back button */}
             <span> Frame {currentFrame + 1} / {frameCount} </span>
-            <button onClick={nextFrame} disabled={currentFrame === frameCount - 1}>Next</button> {/* forward button */}
+            <button onClick={nextFrame} disabled={currentFrame === frameCount - 1}>{">"}</button> {/* forward button */}
+            <button onClick={() => setCurrentFrame(f => Math.min(frameCount - 1, f + frameInterval))} disabled={currentFrame === frameCount - 1}>{">>"}  </button> {/* interval forward */}
+          </div>
+          <div>
+            <label>Interval: </label>
+            <input
+              type="number"
+              value={frameInterval}
+              min={1}
+              onChange={(e) => setFrameInterval(Number(e.target.value))}
+              style={{ width: "50px" }}
+            />
+            <span> frames</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <button onClick={() => setIsPlaying(p => !p)}> {/* play/pause button */}
@@ -151,7 +170,7 @@ return (
               max={frameCount - 1}
               value={currentFrame}
               onChange={(e) => setCurrentFrame(Number(e.target.value))}
-              style={{ flex: 1 }}
+              style={{ flex: 1, accentColor: "#750000" }}
             />
             <span>{formatTime(currentFrame / fps)} / {formatTime(frameCount / fps)}</span>
           </div>
