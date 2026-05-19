@@ -30,7 +30,7 @@ uvicorn main:app --reload # to run FastAPI backend
 
 ## Progress
 ### Basic Features
-- [ ] Function for user to upload video sequence for annotation (video will be auto split into frames in the annotation tool) 
+- [x] Function for user to upload video sequence for annotation (video will be auto split into frames in the annotation tool) 
 - [ ] Function to add configurable class labels for the video sequence/ project 
 - [ ] Function to step forwards and backwards between frames 
 - [ ] Function to manually draw upright bboxes 
