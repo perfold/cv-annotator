@@ -1,6 +1,33 @@
 # CV Annotator
 A minimum viable product (MVP) annotation GUI to demonstrate how the annotation process can be made more efficient, built with React + FastAPI. 
 
+## File Structure
+```
+annotation-tool/
+├── frontend/          React + Vite
+│   └── src/
+│       ├── App.jsx
+│       └── main.jsx
+├── backend/           FastAPI + Uvicorn
+│   ├── main.py
+│   └── requirements.txt
+├── models/            YOLOv7 tiny, SAM (gitignored)
+├── data/              VisDrone dataset + extracted frames (gitignored)
+├── .gitignore
+└── README.md
+```
+
+## How to Run
+```
+cd frontend
+npm install       
+npm run dev # to run React front end
+
+cd backend
+pip install -r requirements.txt
+uvicorn main:app --reload # to run FastAPI backend
+```
+
 ## Progress
 ### Basic Features
 - [ ] Function for user to upload video sequence for annotation (video will be auto split into frames in the annotation tool) 
