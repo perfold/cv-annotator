@@ -11,6 +11,12 @@ function App() {
   const [isPlaying, setIsPlaying] = useState(false)
   const intervalRef = useRef(null)
 
+
+  // class labels
+  const [classes, setClasses] = useState([]) // list of existing classes
+  const [newClassName, setNewClassName] = useState("") // temporary, to hold half-typed labels
+  const [activeClass, setActiveClass] = useState(null) // currently selected class
+
   // format time into HH:MM:SS
   function formatTime(seconds) {
     const h = Math.floor(seconds / 3600)
@@ -46,7 +52,10 @@ function App() {
     function handleKeyDown(e) {
       if (e.key === "ArrowLeft") prevFrame()
       if (e.key === "ArrowRight") nextFrame()
-      if (e.key === " ") setIsPlaying(p => !p)
+      if (e.key === " ") {
+        e.preventDefault() // to prevent spacebar from triggering file explorer directly after video upload
+        setIsPlaying(p => !p)
+      }
     }
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
@@ -70,10 +79,52 @@ function App() {
     return () => clearInterval(intervalRef.current)
   }, [isPlaying, frameCount])
 
+  // class label functions
+  function addClass() {
+    const trimmed = newClassName.trim()
+    if (!trimmed || classes.includes(trimmed)) return
+    setClasses(c => [...c, trimmed])
+    setNewClassName("")
+  }
+
+  function deleteClass(className) {
+    setClasses(c => c.filter(c => c !== className))
+    if (activeClass === className) setActiveClass(null)
+  }
+
   // UI block
-  return (
-    <div>
-      <input 
+return (
+  <div style={{ display: "flex", height: "100vh", textAlign: "center" }}>
+
+    {/* left sidebar: class list */}
+    <div style={{ width: "200px", borderRight: "1px solid #ccc", padding: "8px" }}>
+      <h3>Classes</h3>
+      <p>Active class: {activeClass ?? "N/A"}</p> {/* shows selected class */}
+      <input
+        type="text"
+        value={newClassName}
+        onChange={(e) => setNewClassName(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") addClass() }}
+        placeholder="Enter new class name here"
+      />
+      <button onClick={addClass}>Add</button>  {/* button to add new class */}
+      <ul>
+        {classes.map(className => (
+          <li
+            key={className}
+            onClick={() => setActiveClass(className)} 
+            style={{ fontWeight: activeClass === className ? "bold" : "normal", cursor: "pointer" }}
+          > {/* select class on click */}
+            {className}
+            <button onClick={(e) => { e.stopPropagation(); deleteClass(className) }}>x</button>
+          </li>
+        ))}
+      </ul>
+    </div>
+
+    {/* center area: video + controls */}
+    <div style={{ flex: 1, padding: "8px", display: "flex", flexDirection: "column", alignItems: "center"}}>
+      <input
         type="file"
         accept="video/*"
         onChange={(e) => uploadVideo(e.target.files[0])}
@@ -81,7 +132,10 @@ function App() {
       {videoName && (
         <div>
           <p>Loaded: {videoName} ({frameCount} frames)</p> {/* shows total frame ct */}
-          <img src={`http://localhost:8000/frame/${videoName}/${currentFrame}`} /> {/* calls fastAPI for image */}
+          <img 
+            src={`http://localhost:8000/frame/${videoName}/${currentFrame}`}
+            style={{ maxHeight: "85vh", width: "auto"}}
+          /> {/* calls fastAPI for image */}
           <div>
             <button onClick={prevFrame} disabled={currentFrame === 0}>Prev</button> {/* back button */}
             <span> Frame {currentFrame + 1} / {frameCount} </span>
@@ -91,12 +145,12 @@ function App() {
             <button onClick={() => setIsPlaying(p => !p)}> {/* play/pause button */}
               {isPlaying ? "Pause" : "Play"}
             </button> {/* slider */}
-            <input 
-              type="range" 
+            <input
+              type="range"
               min={0}
               max={frameCount - 1}
               value={currentFrame}
-              onChange={(e) => setCurrentFrame(Number(e.target.value))} 
+              onChange={(e) => setCurrentFrame(Number(e.target.value))}
               style={{ flex: 1 }}
             />
             <span>{formatTime(currentFrame / fps)} / {formatTime(frameCount / fps)}</span>
@@ -104,7 +158,15 @@ function App() {
         </div>
       )}
     </div>
-  )
+
+    {/* right sidebar: annotations (placeholder for future feature) */}
+    <div style={{ width: "200px", borderLeft: "1px solid #ccc", padding: "8px" }}>
+      <h3>Annotations</h3>
+      <p style={{ color: "#aaa" }}>No annotations yet.</p>
+    </div>
+
+  </div>
+)
 }
 
 export default App
