@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react"
 import axios from "axios"
+import AnnotationCanvas from "./AnnotationCanvas"
 
 function App() {
   
@@ -16,6 +17,10 @@ function App() {
   const [classes, setClasses] = useState([]) // list of existing classes
   const [newClassName, setNewClassName] = useState("") // temporary, to hold half-typed labels
   const [activeClass, setActiveClass] = useState(null) // currently selected class
+
+  // bbox states
+  const [bboxesByFrame, setBboxesByFrame] = useState({}) // stores dict of frame:list of bbox
+  const frameBboxes = bboxesByFrame[currentFrame] ?? []
 
   // format time into HH:MM:SS
   function formatTime(seconds) {
@@ -35,6 +40,7 @@ function App() {
     setFrameCount(res.data.frame_count)
     setFps(res.data.frame_rate)
     setCurrentFrame(0)
+    setBboxesByFrame({})
   }
 
   // frame navigation
@@ -94,6 +100,21 @@ function App() {
     if (activeClass === className) setActiveClass(null)
   }
 
+  // bbox drawing functions
+  function addBbox(bbox) {
+    setBboxesByFrame(prev => ({
+      ...prev,
+      [currentFrame]: [...(prev[currentFrame] ?? []), bbox]
+    }))
+  }
+
+  function deleteBbox(id) {
+    setBboxesByFrame(prev => ({
+      ...prev,
+      [currentFrame]: (prev[currentFrame] ?? []).filter(b => b.id !== id)
+    }))
+  }
+
 // UI block
 return (
   <div style={{ display: "flex", height: "100vh", textAlign: "center" }}>
@@ -107,7 +128,8 @@ return (
         value={newClassName}
         onChange={(e) => setNewClassName(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Enter") addClass() }}
-        placeholder="Enter new class name here"
+        placeholder="Enter new class"
+        style={{ width: '100%', boxSizing: 'border-box' }}
       />
       <button onClick={addClass}>Add</button>  {/* button to add new class */}
       <ul>
@@ -136,11 +158,15 @@ return (
         onChange={(e) => uploadVideo(e.target.files[0])}
       />
       {videoName && (
-        <div>
+        <div style={{ width: '85%' }}>
           <p>Loaded: {videoName} ({frameCount} frames)</p> {/* shows total frame ct */}
-          <img 
-            src={`http://localhost:8000/frame/${videoName}/${currentFrame}`}
-            style={{ maxHeight: "85vh", width: "auto"}}
+          <AnnotationCanvas
+            frameUrl={`http://localhost:8000/frame/${videoName}/${currentFrame}`}
+            activeClass={activeClass}
+            classes={classes}
+            frameBboxes={frameBboxes}
+            addBbox={addBbox}
+            deleteBbox={deleteBbox}
           /> {/* calls fastAPI for image */}
           <div>
             <button onClick={() => setCurrentFrame(f => Math.max(0, f - frameInterval))} disabled={currentFrame === 0}>{"<<"}</button> {/* interval back */}
@@ -180,12 +206,23 @@ return (
 
     {/* right sidebar: annotations (placeholder for future feature) */}
     <div style={{ width: "200px", borderLeft: "1px solid #ccc", padding: "8px" }}>
-      <h3>Annotations</h3>
-      <p style={{ color: "#aaa" }}>No annotations yet.</p>
-    </div>
+        <h3>Annotations</h3>
+        {frameBboxes.length === 0 ? (
+          <p style={{ color: "#aaa" }}>No annotations yet.</p>
+        ) : (
+          <ul style={{ textAlign: "left", padding: "0 8px" }}>
+            {frameBboxes.map((b, i) => (
+              <li key={b.id}>
+                {i + 1}. {b.className}
+                <button onClick={() => deleteBbox(b.id)} style={{ marginLeft: 4 }}>x</button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
-  </div>
-)
+    </div>
+  )
 }
 
 export default App
