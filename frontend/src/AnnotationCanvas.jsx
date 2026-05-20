@@ -2,26 +2,15 @@ import { Stage, Layer, Image as KonvaImage, Rect, Text } from 'react-konva'
 import useImage from 'use-image'
 import { useState, useRef, useEffect } from 'react'
 
-const CLASS_COLORS = [
-  '#e74c3c', '#3498db', '#2ecc71', '#f39c12',
-  '#9b59b6', '#1abc9c', '#e67e22', '#e91e63',
-]
-
-// assign a consistent color per class name
-function classColor(className, classes) {
-  const idx = classes.indexOf(className)
-  return CLASS_COLORS[idx % CLASS_COLORS.length]
-}
-
-function AnnotationCanvas({ frameUrl, activeClass, classes, frameBboxes, addBbox, deleteBbox }) {
-  
+function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, addBbox, deleteBbox }) {
+    
   // make stage size self-adjusting to the screen size
   const containerRef = useRef()
   const [containerWidth, setContainerWidth] = useState(0)
   
   useEffect(() => {
   if (!containerRef.current) return
-  setContainerWidth(containerRef.current.getBoundingClientRect().width) // measure immediately on mount
+  setContainerWidth(containerRef.current.getBoundingClientRect().width)
   
   const observer = new ResizeObserver(entries => {
     setContainerWidth(entries[0].contentRect.width)
@@ -31,15 +20,23 @@ function AnnotationCanvas({ frameUrl, activeClass, classes, frameBboxes, addBbox
 }, [])
 
   const [image, status] = useImage(frameUrl, 'anonymous')
+
   // keep the previous frame visible while the next one loads, prevent 'flickering' effect
   const lastImageRef = useRef(null)
   if (status === 'loaded') lastImageRef.current = image
   const displayImage = lastImageRef.current  
 
   // scale stage to fit image naturally
-  const stageWidth = displayImage ? Math.min(containerWidth, displayImage.naturalWidth) : containerWidth
-  const scale = displayImage ? stageWidth / displayImage.naturalWidth : 1
-  const stageHeight = displayImage ? displayImage.naturalHeight * scale : 480
+  const MAX_STAGE_HEIGHT = window.innerHeight - 205  // keep space for buttons above/below stage
+  let stageWidth = containerWidth
+  let scale = displayImage && stageWidth ? stageWidth / displayImage.naturalWidth : 1
+  let stageHeight = displayImage ? displayImage.naturalHeight * scale : 0
+
+  if (displayImage && stageHeight > MAX_STAGE_HEIGHT) {
+    scale = MAX_STAGE_HEIGHT / displayImage.naturalHeight
+    stageHeight = MAX_STAGE_HEIGHT
+    stageWidth = displayImage.naturalWidth * scale
+  }
 
   // drawing state
   const [drawStart, setDrawStart]   = useState(null) // top left corner of bbox
@@ -90,7 +87,7 @@ function AnnotationCanvas({ frameUrl, activeClass, classes, frameBboxes, addBbox
     : null
 
   return (
-    <div ref={containerRef} style={{ width: '100%', margin: '0 auto' }}>      {!activeClass && (
+    <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>      {!activeClass && (
         <p style={{ color: '#750000', margin: '4px 0' }}>
           Select a class to start annotating.
         </p>
@@ -99,7 +96,7 @@ function AnnotationCanvas({ frameUrl, activeClass, classes, frameBboxes, addBbox
         ref={stageRef}
         width={stageWidth}
         height={stageHeight}
-        style={{ cursor: isDrawing ? 'crosshair' : 'default', display: 'block' }}
+        style={{ cursor: isDrawing ? 'crosshair' : 'default', display: 'block'}}
         onClick={handleClick}
         onMouseMove={handleMouseMove}
         onDblClick={handleDblClick}
@@ -110,7 +107,7 @@ function AnnotationCanvas({ frameUrl, activeClass, classes, frameBboxes, addBbox
           )}
 
           {frameBboxes.map((b) => {
-            const color = classColor(b.className, classes)
+            const color = classColors[b.className] ?? '#ffffff'
             return (
               <Rect
                 key={b.id}
@@ -134,7 +131,7 @@ function AnnotationCanvas({ frameUrl, activeClass, classes, frameBboxes, addBbox
               x={b.x + 4} y={b.y + 4}
               text={`${b.className}: ${b.id.slice(0, 6)}`}
               fontSize={12}
-              fill={classColor(b.className, classes)}
+              fill={classColors[b.className] ?? '#ffffff'}
               listening={false}
             />
           ))}

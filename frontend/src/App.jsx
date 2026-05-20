@@ -17,6 +17,7 @@ function App() {
   const [classes, setClasses] = useState([]) // list of existing classes
   const [newClassName, setNewClassName] = useState("") // temporary, to hold half-typed labels
   const [activeClass, setActiveClass] = useState(null) // currently selected class
+  const [classColors, setClassColors] = useState({}) // custom colors for the classes
 
   // bbox states
   const [bboxesByFrame, setBboxesByFrame] = useState({}) // stores dict of frame:list of bbox
@@ -88,15 +89,28 @@ function App() {
   }, [isPlaying, frameCount])
 
   // class label functions
+    const PALETTE = [ // anotations will be auto assigned one of these colors
+    '#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6',
+    '#1abc9c', '#e67e22', '#e91e63', '#00bcd4', '#ff5722',
+    '#8bc34a', '#673ab7', '#ff9800', '#009688', '#cddc39'
+  ]
+
   function addClass() {
     const trimmed = newClassName.trim()
     if (!trimmed || classes.includes(trimmed)) return
+    const color = PALETTE[classes.length % PALETTE.length]
     setClasses(c => [...c, trimmed])
+    setClassColors(prev => ({ ...prev, [trimmed]: color }))
     setNewClassName("")
   }
 
   function deleteClass(className) {
     setClasses(c => c.filter(c => c !== className))
+    setClassColors(prev => {
+      const next = { ...prev }
+      delete next[className]
+      return next
+    })
     if (activeClass === className) setActiveClass(null)
   }
 
@@ -120,7 +134,7 @@ return (
   <div style={{ display: "flex", height: "100vh", textAlign: "center" }}>
 
     {/* left sidebar: class list */}
-    <div style={{ width: "200px", borderRight: "1px solid #ccc", padding: "8px" }}>
+    <div style={{ width: "20%", borderRight: "1px solid #ccc", padding: "8px" }}>
       <h3>Classes</h3>
       <p>Active class: {activeClass ?? "N/A"}</p> {/* shows selected class */}
       <input
@@ -136,13 +150,25 @@ return (
         {classes.map(className => (
           <li
             key={className}
-            onClick={() => setActiveClass(className)} 
-            style={{ 
-              fontWeight: activeClass === className ? "bold" : "normal", 
-              backgroundColor: activeClass === className ? "#750000" : "transparent", 
-              cursor: "pointer"
+            onClick={() => setActiveClass(className)}
+            style={{
+              fontWeight: activeClass === className ? "bold" : "normal",
+              backgroundColor: activeClass === className ? "#750000" : "transparent",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: 'center',
+              gap: "6px",
+              padding: "2px 4px"
             }}
-          > {/* select class on click */}
+          >
+            <input
+              type="color"
+              value={classColors[className] ?? '#ffffff'}
+              onChange={(e) => setClassColors(prev => ({ ...prev, [className]: e.target.value }))} // lets you pick which colour you want
+              onClick={(e) => e.stopPropagation()}
+              style={{ width: 20, height: 20, border: 'none', padding: 0, cursor: 'pointer' }}
+            />
             {className}
             <button onClick={(e) => { e.stopPropagation(); deleteClass(className) }}>x</button>
           </li>
@@ -151,19 +177,20 @@ return (
     </div>
 
     {/* center area: video + controls */}
-    <div style={{ flex: 1, padding: "8px", display: "flex", flexDirection: "column", alignItems: "center"}}>
+    <div style={{ flex: 1, padding: "8px", display: "flex", flexDirection: "column", alignItems: "stretch", textAlign: 'center'
+    }}>
       <input
         type="file"
         accept="video/*"
         onChange={(e) => uploadVideo(e.target.files[0])}
       />
       {videoName && (
-        <div style={{ width: '85%' }}>
+        <div style={{width: '100%'}}>
           <p>Loaded: {videoName} ({frameCount} frames)</p> {/* shows total frame ct */}
           <AnnotationCanvas
             frameUrl={`http://localhost:8000/frame/${videoName}/${currentFrame}`}
             activeClass={activeClass}
-            classes={classes}
+            classColors={classColors}
             frameBboxes={frameBboxes}
             addBbox={addBbox}
             deleteBbox={deleteBbox}
@@ -205,7 +232,7 @@ return (
     </div>
 
     {/* right sidebar: annotations (placeholder for future feature) */}
-    <div style={{ width: "200px", borderLeft: "1px solid #ccc", padding: "8px" }}>
+    <div style={{ width: "20%", borderLeft: "1px solid #ccc", padding: "8px" }}>
         <h3>Annotations</h3>
         {frameBboxes.length === 0 ? (
           <p style={{ color: "#aaa" }}>No annotations yet.</p>
