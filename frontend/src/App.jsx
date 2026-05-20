@@ -2,6 +2,15 @@ import { useEffect, useState, useRef } from "react"
 import axios from "axios"
 import AnnotationCanvas from "./AnnotationCanvas"
 
+// global constants
+const PALETTE = [ // anotations will be auto assigned one of these colors
+'#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6',
+'#1abc9c', '#e67e22', '#e91e63', '#00bcd4', '#ff5722',
+'#8bc34a', '#673ab7', '#ff9800', '#009688', '#cddc39'
+]
+const DEFAULT_TAGS = ['occluded', 'blur', 'cut-off', 'image-error'] // default tags
+
+
 function App() {
   
   // create variables and setters
@@ -24,6 +33,10 @@ function App() {
   const frameBboxes = bboxesByFrame[currentFrame] ?? []
   const [selectedBboxId, setSelectedBboxId] = useState(null) // handles tracking of selected bbox, to change classes
   const [contextMenu, setContextMenu] = useState(null) // where to render floating menu, and for which bbox
+
+  // bbox tags
+  const [tags, setTags] = useState(DEFAULT_TAGS) 
+  const [newTagName, setNewTagName] = useState('') // used to add custom tags for the bboxes
 
   // format time into HH:MM:SS
   function formatTime(seconds) {
@@ -96,12 +109,6 @@ function App() {
   }, [isPlaying, frameCount])
 
   // class label functions
-    const PALETTE = [ // anotations will be auto assigned one of these colors
-    '#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6',
-    '#1abc9c', '#e67e22', '#e91e63', '#00bcd4', '#ff5722',
-    '#8bc34a', '#673ab7', '#ff9800', '#009688', '#cddc39'
-  ]
-
   function addClass() {
     const trimmed = newClassName.trim()
     if (!trimmed || classes.includes(trimmed)) return
@@ -125,7 +132,7 @@ function App() {
   function addBbox(bbox) {
     setBboxesByFrame(prev => ({
       ...prev,
-      [currentFrame]: [...(prev[currentFrame] ?? []), bbox]
+      [currentFrame]: [...(prev[currentFrame] ?? []), { tags: [], ...bbox }]
     }))
   }
 
@@ -156,6 +163,41 @@ function App() {
     window.addEventListener('click', close)
     return () => window.removeEventListener('click', close)
   }, [contextMenu])
+
+  // bbox tagging functions
+  function addTag() {
+      const trimmed = newTagName.trim()
+      if (!trimmed || tags.includes(trimmed)) return // ignore if 'new' tag already in list
+      setTags(t => [...t, trimmed])
+      setNewTagName('')
+    }
+
+    function deleteTag(tagName) {
+      setTags(t => t.filter(t => t !== tagName))
+      setBboxesByFrame(prev => { // also remove it from any bbox that has it
+        const next = {}
+        for (const [frame, bboxes] of Object.entries(prev)) {
+          next[frame] = bboxes.map(b => ({
+            ...b,
+            tags: (b.tags ?? []).filter(t => t !== tagName)
+          }))
+        }
+        return next
+      })
+    }
+
+    function toggleBboxTag(bboxId, tagName) {
+      setBboxesByFrame(prev => ({
+        ...prev,
+        [currentFrame]: (prev[currentFrame] ?? []).map(b => {
+          if (b.id !== bboxId) return b
+          const has = (b.tags ?? []).includes(tagName)
+          return { ...b, tags: has 
+            ? b.tags.filter(t => t !== tagName) // remove tag if bbox already has it
+            : [...(b.tags ?? []), tagName] } // add tag if don't have yet
+        })
+      }))
+    }
 
 // UI block
 return (
@@ -202,6 +244,47 @@ return (
           </li>
         ))}
       </ul>
+
+      {/* tag list */}
+      <div style={{ borderTop: '1px solid #ccc', marginTop: 8, paddingTop: 8 }}>
+        <h3>Tags</h3>
+        {!selectedBboxId && <p style={{ color: '#888', fontSize: 12 }}>Select a bbox to apply tags.</p>}
+        <input
+          type="text"
+          value={newTagName}
+          onChange={(e) => setNewTagName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') addTag() }}
+          placeholder="Add new tag"
+          style={{ width: '100%', boxSizing: 'border-box' }}
+        />
+        <button onClick={addTag}>Add</button>
+        <ul style={{ textAlign: 'left', padding: '0 4px', listStyle: 'none' }}>
+          {tags.map(tag => {
+            const selectedBbox = frameBboxes.find(b => b.id === selectedBboxId)
+            const isChecked = selectedBbox ? (selectedBbox.tags ?? []).includes(tag) : false
+            return (
+              <li key={tag} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 0' }}>
+                <input
+                  type="checkbox"
+                  checked={isChecked}
+                  disabled={!selectedBboxId}
+                  onChange={() => toggleBboxTag(selectedBboxId, tag)}
+                />
+                <span style={{
+                  background: '#750000',
+                  color: '#FFFFFF',
+                  borderRadius: 3,
+                  padding: '1px 5px',
+                  fontSize: 11
+                }}>
+                  {tag}
+                </span>
+                <button onClick={() => deleteTag(tag)} style={{ marginLeft: 'auto' }}>x</button>
+              </li>
+            )
+          })}
+        </ul>
+      </div>
     </div>
 
     {/* center area: video + controls */}
@@ -261,7 +344,7 @@ return (
       )}
     </div>
 
-    {/* right sidebar: annotations (placeholder for future feature) */}
+    {/* right sidebar: annotations */}
     <div style={{ width: "20%", borderLeft: "1px solid #ccc", padding: "8px" }}>
         <h3>Annotations</h3>
         {frameBboxes.length === 0 ? (
@@ -276,25 +359,38 @@ return (
                 style={{ background: selectedBboxId === b.id ? '#333' : 'transparent' }}
               >
                 {i + 1}. {b.className} <span style={{ color: '#888', fontSize: 11 }}>#{b.id.slice(0, 6)}</span>
+                {(b.tags ?? []).map(tag => (
+                  <span key={tag} style={{
+                    background: '#750000',
+                    color: '#FFFFFF',
+                    borderRadius: 3,
+                    padding: '1px 5px',
+                    fontSize: 10,
+                    marginLeft: 3
+                  }}>
+                    {tag}
+                  </span>
+                ))}
                 <button onClick={() => deleteBbox(b.id)} style={{ marginLeft: 4 }}>x</button>
               </li>
             ))}
           </ul>
         )}
       </div>
+    
+    {/* context menu */}
     {contextMenu && (
-  <div
-    style={{
-      position: 'fixed',
-      top: contextMenu.y,
-      left: contextMenu.x,
-      background: '#1a1a1a',
-      border: '1px solid #555',
-      borderRadius: 4,
-      zIndex: 1000,
-      minWidth: 140,
-      boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
-    }}
+    <div style={{
+        position: 'fixed',
+        top: contextMenu.y,
+        left: contextMenu.x,
+        background: '#1a1a1a',
+        border: '1px solid #555',
+        borderRadius: 4,
+        zIndex: 1000,
+        minWidth: 140,
+        boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
+      }}
     onClick={e => e.stopPropagation()}  // prevent closing when clicking inside menu
   >
     <div style={{ padding: '4px 10px', color: '#888', fontSize: 11, borderBottom: '1px solid #333' }}>
@@ -318,6 +414,25 @@ return (
         {cls}
       </div>
     ))}
+    <div style={{ borderTop: '1px solid #333', borderBottom: '1px solid #333' }}>
+      <div style={{ padding: '4px 10px', color: '#888', fontSize: 11 }}>Tags:</div>
+      {tags.map(tag => {
+        const bbox = frameBboxes.find(b => b.id === contextMenu.bboxId)
+        const isChecked = bbox ? (bbox.tags ?? []).includes(tag) : false
+        return (
+          <div
+            key={tag}
+            onClick={() => toggleBboxTag(contextMenu.bboxId, tag)}
+            style={{ padding: '4px 12px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+            onMouseEnter={e => e.currentTarget.style.background = '#333'}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+          >
+            <input type="checkbox" checked={isChecked} onChange={() => {}} style={{ pointerEvents: 'none' }} />
+            {tag}
+          </div>
+        )
+      })}
+    </div>
     <div style={{ borderTop: '1px solid #333' }}>
       <div
         onClick={() => { deleteBbox(contextMenu.bboxId); setContextMenu(null) }}

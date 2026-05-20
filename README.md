@@ -42,7 +42,7 @@ spacebar: play/pause video\
 **single left click (empty area)**: start drawing a new bounding box (corner)\
 **double left click**: finish drawing bounding box (opposite corner)\
 
-**single right click**: launch bbox context menu, to change class/delete\
+**single right click**: launch bbox context menu, to change bbox's class/add tags/delete bbox\
 **single left click (existing bbox)**: select existing bbox\
 **single left click (existing bbox) + backspace/delete**: delete existing bbox\
 
@@ -53,8 +53,10 @@ spacebar: play/pause video\
 - [x] Change color of class label's bbox
 - [x] Step forwards and backwards between frames 
 - [x] Manually draw upright bboxes 
+- [x] Change class of existing bbox
+- [x] Delete existing bbox
 - [ ] Drag and move individual bbox
-- [ ] Add configurable tags to bboxes (e.g. of tags: occluded, blur)
+- [x] Add configurable tags to bboxes (e.g. of tags: occluded, blur)
 - [ ] Zoom in/out of image
 - [ ] Drag and pan around image 
 - [ ] Save annotation progress and resume later 
