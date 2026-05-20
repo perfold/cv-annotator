@@ -11,7 +11,7 @@ function App() {
   const [fps, setFps] = useState(30)
   const [isPlaying, setIsPlaying] = useState(false)
   const intervalRef = useRef(null)
-  const [frameInterval, setFrameInterval] = useState(10) // user definable keyframe interval
+  const [frameInterval, setFrameInterval] = useState(10) // user definable keyframe interval, 10 is default
 
   // class labels
   const [classes, setClasses] = useState([]) // list of existing classes
@@ -22,6 +22,8 @@ function App() {
   // bbox states
   const [bboxesByFrame, setBboxesByFrame] = useState({}) // stores dict of frame:list of bbox
   const frameBboxes = bboxesByFrame[currentFrame] ?? []
+  const [selectedBboxId, setSelectedBboxId] = useState(null) // handles tracking of selected bbox, to change classes
+  const [contextMenu, setContextMenu] = useState(null) // where to render floating menu, and for which bbox
 
   // format time into HH:MM:SS
   function formatTime(seconds) {
@@ -122,12 +124,33 @@ function App() {
     }))
   }
 
-  function deleteBbox(id) {
+  function deleteBbox(id) { // not working right now, since right click is mapped to change class context menu
     setBboxesByFrame(prev => ({
       ...prev,
       [currentFrame]: (prev[currentFrame] ?? []).filter(b => b.id !== id)
     }))
   }
+
+  // bbox class changing functions
+  function changeClass(id, newClassName) {
+    setBboxesByFrame(prev => ({
+      ...prev,
+      [currentFrame]: (prev[currentFrame] ?? []).map(b =>
+        b.id === id ? { ...b, className: newClassName } : b
+      )
+    }))
+  }
+
+  function openContextMenu(x, y, bboxId) {
+    setContextMenu({ x, y, bboxId })
+  }
+
+  useEffect(() => {
+    if (!contextMenu) return
+    const close = () => { setContextMenu(null); setSelectedBboxId(null) }
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [contextMenu])
 
 // UI block
 return (
@@ -193,7 +216,9 @@ return (
             classColors={classColors}
             frameBboxes={frameBboxes}
             addBbox={addBbox}
-            deleteBbox={deleteBbox}
+            selectedBboxId={selectedBboxId}
+            setSelectedBboxId={setSelectedBboxId}
+            openContextMenu={openContextMenu}
           /> {/* calls fastAPI for image */}
           <div>
             <button onClick={() => setCurrentFrame(f => Math.max(0, f - frameInterval))} disabled={currentFrame === 0}>{"<<"}</button> {/* interval back */}
@@ -239,7 +264,12 @@ return (
         ) : (
           <ul style={{ textAlign: "left", padding: "0 16px" }}>
             {frameBboxes.map((b, i) => (
-              <li key={b.id} title={b.id}>   {/* shows id */}
+              <li 
+                key={b.id} 
+                title={b.id}
+                onContextMenu={(e) => { e.preventDefault(); openContextMenu(e.clientX, e.clientY, b.id) }}
+                style={{ background: selectedBboxId === b.id ? '#333' : 'transparent' }}
+              >
                 {i + 1}. {b.className} <span style={{ color: '#888', fontSize: 11 }}>#{b.id.slice(0, 6)}</span>
                 <button onClick={() => deleteBbox(b.id)} style={{ marginLeft: 4 }}>x</button>
               </li>
@@ -247,7 +277,54 @@ return (
           </ul>
         )}
       </div>
-
+    {contextMenu && (
+  <div
+    style={{
+      position: 'fixed',
+      top: contextMenu.y,
+      left: contextMenu.x,
+      background: '#1a1a1a',
+      border: '1px solid #555',
+      borderRadius: 4,
+      zIndex: 1000,
+      minWidth: 140,
+      boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
+    }}
+    onClick={e => e.stopPropagation()}  // prevent closing when clicking inside menu
+  >
+    <div style={{ padding: '4px 10px', color: '#888', fontSize: 11, borderBottom: '1px solid #333' }}>
+      Change class:
+    </div>
+    {classes.map(cls => (
+      <div
+        key={cls}
+        onClick={() => { changeClass(contextMenu.bboxId, cls); setContextMenu(null) }}
+        style={{
+          padding: '6px 12px',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+        }}
+        onMouseEnter={e => e.currentTarget.style.background = '#333'}
+        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+      >
+        <span style={{ width: 10, height: 10, borderRadius: 2, background: classColors[cls] ?? '#fff', display: 'inline-block' }} />
+        {cls}
+      </div>
+    ))}
+    <div style={{ borderTop: '1px solid #333' }}>
+      <div
+        onClick={() => { deleteBbox(contextMenu.bboxId); setContextMenu(null) }}
+        style={{ padding: '6px 12px', cursor: 'pointer', color: '#e74c3c' }}
+        onMouseEnter={e => e.currentTarget.style.background = '#333'}
+        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+      >
+        Delete
+      </div>
+    </div>
+  </div>
+)}
     </div>
   )
 }

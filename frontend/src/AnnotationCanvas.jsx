@@ -2,7 +2,7 @@ import { Stage, Layer, Image as KonvaImage, Rect, Text } from 'react-konva'
 import useImage from 'use-image'
 import { useState, useRef, useEffect } from 'react'
 
-function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, addBbox, deleteBbox }) {
+function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, addBbox, selectedBboxId, setSelectedBboxId, openContextMenu}) {
     
   // make stage size self-adjusting to the screen size
   const containerRef = useRef()
@@ -55,7 +55,7 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
   })
 
   const handleClick = (e) => {
-    if (e.evt.button === 2) return  // ensure right click doesnt trigger new bbox, only used to delete bbox
+    if (e.evt.button === 2) {setSelectedBboxId(null); return}  // ensure right click doesnt trigger new bbox, only used to change class
     if (!activeClass) return
     if (isDrawing) return // ignore the second click if current drawing
     const pos = getPointerPos()
@@ -108,22 +108,37 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
 
           {frameBboxes.map((b) => {
             const color = classColors[b.className] ?? '#ffffff'
+            const isSelected = b.id === selectedBboxId
             return (
               <Rect
                 key={b.id}
                 x={b.x} y={b.y}
                 width={b.width} height={b.height}
-                stroke={color}
-                strokeWidth={2}
-                fill={color + '22'}
-                onContextMenu={(e) => { // right click to delete annotation
+                stroke= {color}
+                strokeWidth={isSelected ? 4 : 2}
+                fill={color + '25'} // intensity of bbox fill colour
+                onContextMenu={(e) => { 
                     e.evt.preventDefault()   
                     e.cancelBubble = true
-                    deleteBbox(b.id)
+                    setSelectedBboxId(b.id)
+                    openContextMenu(e.evt.clientX, e.evt.clientY, b.id)
                 }}
               />
             )
           })}
+
+          {frameBboxes.filter(b => b.id === selectedBboxId).map(b => (
+            <Rect
+                key={b.id + '_sel'}
+                x={b.x - 3} y={b.y - 3}
+                width={b.width + 6} height={b.height + 6}
+                stroke='#ffffff'
+                strokeWidth={1}
+                dash={[5, 3]}
+                fill='transparent'
+                listening={false}
+            />
+          ))}
 
           {frameBboxes.map((b) => (
             <Text
