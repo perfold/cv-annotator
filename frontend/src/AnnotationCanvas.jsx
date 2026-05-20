@@ -115,8 +115,12 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
                 x={b.x} y={b.y}
                 width={b.width} height={b.height}
                 stroke= {color}
-                strokeWidth={isSelected ? 4 : 2}
+                strokeWidth={isSelected ? 6 : 2} // thickens line when box is highlighted
                 fill={color + '25'} // intensity of bbox fill colour
+                onClick={(e) => {
+                    e.cancelBubble = true // prevent trigger of new bbox if selecting existing bbox
+                    setSelectedBboxId(b.id)
+                }}
                 onContextMenu={(e) => { 
                     e.evt.preventDefault()   
                     e.cancelBubble = true
@@ -126,19 +130,6 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
               />
             )
           })}
-
-          {frameBboxes.filter(b => b.id === selectedBboxId).map(b => (
-            <Rect
-                key={b.id + '_sel'}
-                x={b.x - 3} y={b.y - 3}
-                width={b.width + 6} height={b.height + 6}
-                stroke='#ffffff'
-                strokeWidth={1}
-                dash={[5, 3]}
-                fill='transparent'
-                listening={false}
-            />
-          ))}
 
           {frameBboxes.map((b) => (
             <Text

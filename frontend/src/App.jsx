@@ -67,10 +67,15 @@ function App() {
         e.preventDefault() // to prevent spacebar from triggering file explorer directly after video upload
         setIsPlaying(p => !p)
       }
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedBboxId) { // ddelete bbox if selected + hit backspace/del
+        e.preventDefault()
+        deleteBbox(selectedBboxId)
+        setSelectedBboxId(null)
+      }
     }
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [videoName, frameCount, frameInterval])
+  }, [videoName, frameCount, frameInterval, selectedBboxId])
 
   // video playback
   useEffect(() => {
@@ -124,7 +129,7 @@ function App() {
     }))
   }
 
-  function deleteBbox(id) { // not working right now, since right click is mapped to change class context menu
+  function deleteBbox(id) { // select bbox + backspace/del to use
     setBboxesByFrame(prev => ({
       ...prev,
       [currentFrame]: (prev[currentFrame] ?? []).filter(b => b.id !== id)
