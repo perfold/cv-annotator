@@ -30,17 +30,17 @@ uvicorn main:app --reload # to run FastAPI backend
 
 ## Controls
 ### Navigation
-'&larr;': go back 1 frame
-'&rarr;': go forward 1 frame 
-',': go back 10* frames
-'.': go forward 10* frames
+'&larr;': go back 1 frame\
+'&rarr;': go forward 1 frame\
+',': go back 10* frames\
+'.': go forward 10* frames\
 spacebar: play/pause video
 
 *number of frames/interval can be changed
 
 ### Annotation
-single left click: start bounding box drawing (corner)
-double left click: end bounding box drawing (opposite corner)
+single left click: start bounding box drawing (corner)\
+double left click: end bounding box drawing (opposite corner)\
 single right click: launch bbox context menu, to change class/delete
 
 ## Progress
