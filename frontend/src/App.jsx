@@ -203,10 +203,13 @@ function App() {
 return (
   <div style={{ display: "flex", height: "100vh", textAlign: "center" }}>
 
-    {/* left sidebar: class list */}
+    {/* left sidebar */}
+
+    {/* class section */}
     <div style={{ width: "20%", borderRight: "1px solid #ccc", padding: "8px" }}>
       <h3>Classes</h3>
       <p>Active class: {activeClass ?? "N/A"}</p> {/* shows selected class */}
+      {/* new class input */}
       <input
         type="text"
         value={newClassName}
@@ -217,6 +220,7 @@ return (
       />
       <button onClick={addClass}>Add</button>  {/* button to add new class */}
       <ul>
+        {/* class list & highlight (upon selection) */}
         {classes.map(className => (
           <li
             key={className}
@@ -245,10 +249,11 @@ return (
         ))}
       </ul>
 
-      {/* tag list */}
+      {/* tag section */}
       <div style={{ borderTop: '1px solid #ccc', marginTop: 8, paddingTop: 8 }}>
         <h3>Tags</h3>
         {!selectedBboxId && <p style={{ color: '#888', fontSize: 12 }}>Select a bbox to apply tags.</p>}
+        {/* new tag input */}
         <input
           type="text"
           value={newTagName}
@@ -258,6 +263,7 @@ return (
           style={{ width: '100%', boxSizing: 'border-box' }}
         />
         <button onClick={addTag}>Add</button>
+        {/* tag list & application of tags on bbox */}
         <ul style={{ textAlign: 'left', padding: '0 4px', listStyle: 'none' }}>
           {tags.map(tag => {
             const selectedBbox = frameBboxes.find(b => b.id === selectedBboxId)
@@ -287,14 +293,17 @@ return (
       </div>
     </div>
 
-    {/* center area: video + controls */}
+    {/* center area */}
+
     <div style={{ flex: 1, padding: "8px", display: "flex", flexDirection: "column", alignItems: "stretch", textAlign: 'center'
     }}>
+      {/* video file upload */}
       <input
         type="file"
         accept="video/*"
         onChange={(e) => uploadVideo(e.target.files[0])}
       />
+      {/* konva stage: image display */}
       {videoName && (
         <div style={{width: '100%'}}>
           <p>Loaded: {videoName} ({frameCount} frames)</p> {/* shows total frame ct */}
@@ -309,6 +318,7 @@ return (
             openContextMenu={openContextMenu}
           /> {/* calls fastAPI for image */}
           <div>
+            {/* playback navigation */}
             <button onClick={() => setCurrentFrame(f => Math.max(0, f - frameInterval))} disabled={currentFrame === 0}>{"<<"}</button> {/* interval back */}
             <button onClick={prevFrame} disabled={currentFrame === 0}>{"<"}</button> {/* back button */}
             <span> Frame {currentFrame + 1} / {frameCount} </span>
@@ -316,6 +326,7 @@ return (
             <button onClick={() => setCurrentFrame(f => Math.min(frameCount - 1, f + frameInterval))} disabled={currentFrame === frameCount - 1}>{">>"}  </button> {/* interval forward */}
           </div>
           <div>
+            {/* frame interval setter */}
             <label>Interval: </label>
             <input
               type="number"
@@ -326,10 +337,12 @@ return (
             />
             <span> frames</span>
           </div>
+          {/* play/pause button */}
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <button onClick={() => setIsPlaying(p => !p)}> {/* play/pause button */}
+            <button onClick={() => setIsPlaying(p => !p)}>
               {isPlaying ? "Pause" : "Play"}
-            </button> {/* slider */}
+            {/* video slider */}
+            </button>
             <input
               type="range"
               min={0}
@@ -344,9 +357,11 @@ return (
       )}
     </div>
 
-    {/* right sidebar: annotations */}
+    {/* right sidebar */}
+
     <div style={{ width: "20%", borderLeft: "1px solid #ccc", padding: "8px" }}>
         <h3>Annotations</h3>
+        {/* annotation list */}
         {frameBboxes.length === 0 ? (
           <p style={{ color: "#aaa" }}>No annotations yet.</p>
         ) : (
@@ -358,6 +373,7 @@ return (
                 onContextMenu={(e) => { e.preventDefault(); openContextMenu(e.clientX, e.clientY, b.id) }}
                 style={{ background: selectedBboxId === b.id ? '#333' : 'transparent' }}
               >
+                {/* bbox tags */}
                 {i + 1}. {b.className} <span style={{ color: '#888', fontSize: 11 }}>#{b.id.slice(0, 6)}</span>
                 {(b.tags ?? []).map(tag => (
                   <span key={tag} style={{
@@ -378,7 +394,7 @@ return (
         )}
       </div>
     
-    {/* context menu */}
+    {/* context menu style */}
     {contextMenu && (
     <div style={{
         position: 'fixed',
@@ -393,9 +409,10 @@ return (
       }}
     onClick={e => e.stopPropagation()}  // prevent closing when clicking inside menu
   >
-    <div style={{ padding: '4px 10px', color: '#888', fontSize: 11, borderBottom: '1px solid #333' }}>
+    <div style={{ padding: '4px 10px', color: '#888', fontSize: 11, borderBottom: '1px solid #333' }}> {/* context menu text color */}
       Change class:
     </div>
+    {/* class change toggle */}
     {classes.map(cls => (
       <div
         key={cls}
@@ -407,13 +424,14 @@ return (
           alignItems: 'center',
           gap: 8,
         }}
-        onMouseEnter={e => e.currentTarget.style.background = '#333'}
+        onMouseEnter={e => e.currentTarget.style.background = '#333'} // color of background of mouse hover
         onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
       >
         <span style={{ width: 10, height: 10, borderRadius: 2, background: classColors[cls] ?? '#fff', display: 'inline-block' }} />
         {cls}
       </div>
     ))}
+    {/* tag toggle */}
     <div style={{ borderTop: '1px solid #333', borderBottom: '1px solid #333' }}>
       <div style={{ padding: '4px 10px', color: '#888', fontSize: 11 }}>Tags:</div>
       {tags.map(tag => {
@@ -434,6 +452,7 @@ return (
       })}
     </div>
     <div style={{ borderTop: '1px solid #333' }}>
+      {/* delete annotation button */}
       <div
         onClick={() => { deleteBbox(contextMenu.bboxId); setContextMenu(null) }}
         style={{ padding: '6px 12px', cursor: 'pointer', color: '#e74c3c' }}

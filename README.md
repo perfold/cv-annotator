@@ -26,6 +26,8 @@ npm run dev # to run React front end
 cd backend
 pip install -r requirements.txt
 uvicorn main:app --reload # to run FastAPI backend
+
+Open http://localhost:5173/ in your browser, to view the frontend
 ```
 
 ## Controls
@@ -39,12 +41,12 @@ spacebar: play/pause video\
 *number of frames/interval can be changed
 
 ### Annotation
-**single left click (empty area)**: start drawing a new bounding box (corner)\
+**single left click**: start drawing a new bounding box (corner)\
 **double left click**: finish drawing bounding box (opposite corner)\
 
 **single right click**: launch bbox context menu, to change bbox's class/add tags/delete bbox\
-**single left click (existing bbox)**: select existing bbox\
-**single left click (existing bbox) + backspace/delete**: delete existing bbox\
+**shift/ctrl + left click**: select existing bbox\
+**shift/ctrl + left click & backspace/delete**: select and delete existing bbox\
 
 ## Progress
 ### Basic Features

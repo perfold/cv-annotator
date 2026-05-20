@@ -55,7 +55,8 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
   })
 
   const handleClick = (e) => {
-    if (e.evt.button === 2) {setSelectedBboxId(null); return}  // ensure right click doesnt trigger new bbox, only used to change class
+    if (e.evt.button === 2) {setSelectedBboxId(null); return}  // ensure right click doesnt trigger new bbox, only used to open context menu
+    setSelectedBboxId(null)
     if (!activeClass) return
     if (isDrawing) return // ignore the second click if current drawing
     const pos = getPointerPos()
@@ -118,8 +119,10 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
                 strokeWidth={isSelected ? 6 : 2} // thickens line when box is highlighted
                 fill={color + '25'} // intensity of bbox fill colour
                 onClick={(e) => {
-                    e.cancelBubble = true // prevent trigger of new bbox if selecting existing bbox
-                    setSelectedBboxId(b.id)
+                    if (e.evt.shiftKey || e.evt.ctrlKey){
+                        e.cancelBubble = true
+                        setSelectedBboxId(b.id)
+                    }
                 }}
                 onContextMenu={(e) => { 
                     e.evt.preventDefault()   
