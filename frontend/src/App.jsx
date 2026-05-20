@@ -210,10 +210,10 @@ return (
         {frameBboxes.length === 0 ? (
           <p style={{ color: "#aaa" }}>No annotations yet.</p>
         ) : (
-          <ul style={{ textAlign: "left", padding: "0 8px" }}>
+          <ul style={{ textAlign: "left", padding: "0 16px" }}>
             {frameBboxes.map((b, i) => (
-              <li key={b.id}>
-                {i + 1}. {b.className}
+              <li key={b.id} title={b.id}>   {/* shows id */}
+                {i + 1}. {b.className} <span style={{ color: '#888', fontSize: 11 }}>#{b.id.slice(0, 6)}</span>
                 <button onClick={() => deleteBbox(b.id)} style={{ marginLeft: 4 }}>x</button>
               </li>
             ))}

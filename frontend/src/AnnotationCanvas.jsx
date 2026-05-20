@@ -57,9 +57,10 @@ function AnnotationCanvas({ frameUrl, activeClass, classes, frameBboxes, addBbox
     height: Math.abs(a.y - b.y),
   })
 
-  const handleClick = () => {
+  const handleClick = (e) => {
+    if (e.evt.button === 2) return  // ensure right click doesnt trigger new bbox, only used to delete bbox
     if (!activeClass) return
-    if (isDrawing) return       // ignore the second click if current drawing
+    if (isDrawing) return // ignore the second click if current drawing
     const pos = getPointerPos()
     if (!pos) return
     setDrawStart(pos)
@@ -118,9 +119,10 @@ function AnnotationCanvas({ frameUrl, activeClass, classes, frameBboxes, addBbox
                 stroke={color}
                 strokeWidth={2}
                 fill={color + '22'}
-                onDblClick={(e) => {   // double-click a bbox to delete it
-                  e.cancelBubble = true
-                  deleteBbox(b.id)
+                onContextMenu={(e) => { // right click to delete annotation
+                    e.evt.preventDefault()   
+                    e.cancelBubble = true
+                    deleteBbox(b.id)
                 }}
               />
             )
@@ -130,7 +132,7 @@ function AnnotationCanvas({ frameUrl, activeClass, classes, frameBboxes, addBbox
             <Text
               key={b.id + '_lbl'}
               x={b.x + 4} y={b.y + 4}
-              text={b.className}
+              text={`${b.className}: ${b.id.slice(0, 6)}`}
               fontSize={12}
               fill={classColor(b.className, classes)}
               listening={false}
