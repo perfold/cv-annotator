@@ -12,6 +12,8 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
   const rubberBandStartRef = useRef(null) // where rubber band started
   const rubberBandFiredRef = useRef(false) // prevent onClick deselect after rubber band
   const [rubberBand, setRubberBand] = useState(null) // rubber band dimensions
+  const [stageScale, setStageScale] = useState(1) // to allow for zoom in/out
+  const [stagePos, setStagePos] = useState({ x: 0, y: 0 })
   
   useEffect(() => {
   if (!containerRef.current) return
@@ -50,7 +52,14 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
 
   const stageRef = useRef()
 
-  const getPointerPos = () => stageRef.current?.getPointerPosition() ?? null
+  const getPointerPos = () => {
+    const pos = stageRef.current?.getPointerPosition()
+    if (!pos) return null
+    return {
+      x: (pos.x - stagePos.x) / stageScale,
+      y: (pos.y - stagePos.y) / stageScale,
+    }
+  }
 
   const rectFromPoints = (a, b) => ({
     x:      Math.min(a.x, b.x),
@@ -121,7 +130,12 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
     rubberBandStartRef.current = null
   }
 
-  const handleDblClick = () => {
+  const handleDblClick = (e) => {
+    if (mode === 'select') { 
+      setStageScale(1) // zooms back to original scale if you double click
+      setStagePos({ x: 0, y: 0 })
+      return
+    }
     if (!isDrawing || !drawCurrent) return
     const rect = rectFromPoints(drawStart, drawCurrent)
 
@@ -133,12 +147,37 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
     setDrawCurrent(null)
   }
 
+    const handleWheel = (e) => {
+      e.evt.preventDefault()
+      const stage = stageRef.current
+      const pointer = stage.getPointerPosition()
+      const zoomFactor = 1.08
+      const newScale = e.evt.deltaY < 0 ? stageScale * zoomFactor : stageScale / zoomFactor
+      const clampedScale = Math.min(Math.max(newScale, 1), 10)
+
+      if (clampedScale === 1) {
+        setStageScale(1)
+        setStagePos({ x: 0, y: 0 })
+        return
+      }
+
+      const mousePointTo = {
+        x: (pointer.x - stagePos.x) / stageScale,
+        y: (pointer.y - stagePos.y) / stageScale,
+      }
+      setStagePos({
+        x: pointer.x - mousePointTo.x * clampedScale,
+        y: pointer.y - mousePointTo.y * clampedScale,
+      })
+      setStageScale(clampedScale)
+    }
+
   const preview = isDrawing && drawCurrent
     ? rectFromPoints(drawStart, drawCurrent)
     : null
 
   return (
-    <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>    
+    <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', overflow: 'hidden'}}>    
       {mode === 'draw' && !activeClass && ( // hides 'select class to start annotating' if in select mode
         <p style={{ color: '#750000', margin: '4px 0' }}>
           Select a class to start annotating.
@@ -148,6 +187,10 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
         ref={stageRef}
         width={stageWidth}
         height={stageHeight}
+        scaleX={stageScale}
+        scaleY={stageScale}
+        x={stagePos.x}
+        y={stagePos.y}
         style={{ 
           cursor: mode === 'draw' ? (isDrawing ? 'crosshair' : 'crosshair') : 'default', 
           display: 'block' 
@@ -157,6 +200,7 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onDblClick={handleDblClick}
+        onWheel={handleWheel}
       >
         <Layer>
           {displayImage && (
