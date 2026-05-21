@@ -2,7 +2,7 @@ import { Stage, Layer, Image as KonvaImage, Rect, Text, Group, Label, Tag } from
 import useImage from 'use-image'
 import { useState, useRef, useEffect } from 'react'
 
-function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, addBbox, selectedBboxIds, setSelectedBboxIds, openContextMenu, mode, updateBbox, updateBboxes}) {
+function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, addBbox, selectedBboxIds, setSelectedBboxIds, openContextMenu, mode, updateBboxes}) {
     
   // refs and states
   const containerRef = useRef()

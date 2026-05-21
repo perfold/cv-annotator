@@ -374,7 +374,6 @@ return (
             setSelectedBboxIds={setSelectedBboxIds}
             openContextMenu={openContextMenu}
             mode={mode}
-            updateBbox={updateBbox}
             updateBboxes={updateBboxes}
           /> {/* calls fastAPI for image */}
           <div>
