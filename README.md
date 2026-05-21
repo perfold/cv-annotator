@@ -1,6 +1,8 @@
 # CV Annotator
 A minimum viable product (MVP) annotation GUI to demonstrate how the annotation process can be made more efficient, built with React + FastAPI. 
 
+---
+
 ## File Structure
 ```
 annotation-tool/
@@ -17,6 +19,8 @@ annotation-tool/
 └── README.md
 ```
 
+---
+
 ## How to Run
 ```
 cd frontend
@@ -30,31 +34,45 @@ uvicorn main:app --reload # to run FastAPI backend
 Open http://localhost:5173/ in your browser, to view the frontend
 ```
 
-## Controls
-### Navigation
-**&larr;**: go back 1 frame\
-**&rarr;**: go forward 1 frame\
-**, (comma)**: go back 10* frames\
-**. (fullstop)**: go forward 10* frames\
-spacebar: play/pause video\
+---
 
-*number of frames/interval can be changed
+## Keyboard Shortcuts & Controls
+### Navigation
+
+| Key | Action |
+|-----|--------|
+| `←` | Go back 1 frame |
+| `→` | Go forward 1 frame |
+| `,` | Go back N frames |
+| `.` | Go forward N frames |
+| `Space` | Play / Pause |
+
+> N is the frame interval, adjustable in the UI (default: 10)
+
+---
 
 ### Annotation
 
-**W**: toggle between 'select' and 'draw' mode\
+`W` — toggle between **Select** and **Draw** mode
 
-#### In 'draw' mode:
-**single left click**: start drawing a new bounding box (corner)\
-**double left click**: finish drawing bounding box (opposite corner)\
+### Draw Mode
+| Input | Action |
+|-------|--------|
+| Left click | Place first corner of bbox |
+| Double left click | Place opposite corner, finalize bbox |
 
-#### In 'select' mode:
-**left click**: select existing bbox\
-**left click + backspace/delete**: select and delete existing bbox\
-**right click**: launch bbox context menu, to change bbox's class/add tags/delete bbox\
+### Select Mode
+| Input | Action |
+|-------|--------|
+| Left click | Select a bbox |
+| Shift + Left click | Add/remove bbox from selection |
+| Left click + drag (canvas) | Rubber band select multiple bboxes |
+| Ctrl + A | Select all bboxes on current frame |
+| Left click + drag (bbox) | Move selected bbox(es) |
+| Backspace / Delete | Delete selected bbox(es) |
+| Right click | Open context menu (change class, add tags, delete)/
 
-**left click + drag**: move existing bbox\
-**double left click**: set new position of bbox\
+---
 
 ## Progress
 ### Basic Features
@@ -71,7 +89,7 @@ spacebar: play/pause video\
 - [ ] Drag and pan around image 
 - [ ] Save annotation progress and resume later 
 - [ ] Export final annotations in “CVAT for Video” .xml format 
-- [ ] Group shift all bboxes in a single frame at once 
+- [x] Group shift all bboxes in a single frame at once 
  
 ### Advanced Features
 - [ ] Upload and run YOLOv7-tiny (https://github.com/WongKinYiu/yolov7) object detection model – to prepopulate the data with bboxes (and class labels) on demand. 
@@ -81,3 +99,5 @@ spacebar: play/pause video\
 - [ ] Use (any variant of) SAM (https://github.com/facebookresearch/segment-anything) to tighten bounding boxes on demand for all bboxes in a frame. 
 - [ ] Summarise the class label distribution stats for each project/ across all projects and export in csv format. 
 - [ ] Extract and export bbox target chips by saving them in respective class folders. 
+
+---

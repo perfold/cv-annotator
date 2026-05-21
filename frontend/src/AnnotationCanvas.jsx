@@ -2,11 +2,16 @@ import { Stage, Layer, Image as KonvaImage, Rect, Text, Group, Label, Tag } from
 import useImage from 'use-image'
 import { useState, useRef, useEffect } from 'react'
 
-function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, addBbox, selectedBboxId, setSelectedBboxId, openContextMenu, mode, updateBbox}) {
+function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, addBbox, selectedBboxIds, setSelectedBboxIds, openContextMenu, mode, updateBbox, updateBboxes}) {
     
-  // make stage size self-adjusting to the screen size
+  // refs and states
   const containerRef = useRef()
   const [containerWidth, setContainerWidth] = useState(0)
+  const nodeRefs = useRef({})             
+  const dragStartPositions = useRef({}) // positions at drag start
+  const rubberBandStartRef = useRef(null) // where rubber band started
+  const rubberBandFiredRef = useRef(false) // prevent onClick deselect after rubber band
+  const [rubberBand, setRubberBand] = useState(null) // rubber band dimensions
   
   useEffect(() => {
   if (!containerRef.current) return
@@ -54,13 +59,18 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
     height: Math.abs(a.y - b.y),
   })
 
+  const rectsIntersect = (a, rb) =>
+  !(a.x + a.width < rb.x || a.x > rb.x + rb.width ||
+    a.y + a.height < rb.y || a.y > rb.y + rb.height)
+
   const handleClick = (e) => {
-    if (e.evt.button === 2) {setSelectedBboxId(null); return}  // ensure right click doesnt trigger new bbox, only used to open context menu
+    if (e.evt.button === 2) {setSelectedBboxIds([]); return}  // ensure right click doesnt trigger new bbox, only used to open context menu
+    if (rubberBandFiredRef.current) { rubberBandFiredRef.current = false; return } // prevent click after rubberband
     if (mode === 'select') { // in select mode, clicking on canvas deselects bbox
-      setSelectedBboxId(null)
+      setSelectedBboxIds([])
       return
     }
-    setSelectedBboxId(null)
+    setSelectedBboxIds([])
     if (!activeClass) return
     if (isDrawing) return // ignore the second click if current drawing
     const pos = getPointerPos()
@@ -70,9 +80,45 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
   }
 
   const handleMouseMove = () => {
-    if (!isDrawing) return
+    // basic draw logic
+    if (isDrawing) {
+      const pos = getPointerPos()
+      if (pos) setDrawCurrent(pos)
+      return
+    }
+    // rubber band logic
+    if (mode === 'select' && rubberBandStartRef.current) {
+      const pos = getPointerPos()
+      if (!pos) return
+      const start = rubberBandStartRef.current
+      if (Math.abs(pos.x - start.x) > 3 || Math.abs(pos.y - start.y) > 3) {
+        setRubberBand({ x1: start.x, y1: start.y, x2: pos.x, y2: pos.y })
+      }
+    }
+  }
+
+  const handleMouseDown = (e) => {
+    if (mode !== 'select') return
+    if (e.evt.button !== 0) return
     const pos = getPointerPos()
-    if (pos) setDrawCurrent(pos)
+    rubberBandStartRef.current = pos
+  }
+
+  const handleMouseUp = (e) => {
+    if (!rubberBand) { rubberBandStartRef.current = null; return }
+    const rb = {
+      x: Math.min(rubberBand.x1, rubberBand.x2),
+      y: Math.min(rubberBand.y1, rubberBand.y2),
+      width: Math.abs(rubberBand.x2 - rubberBand.x1),
+      height: Math.abs(rubberBand.y2 - rubberBand.y1),
+    }
+    const intersecting = frameBboxes.filter(b => rectsIntersect(b, rb)).map(b => b.id)
+    if (intersecting.length > 0) {
+      setSelectedBboxIds(intersecting)
+      rubberBandFiredRef.current = true // block the upcoming onClick from deselecting
+    }
+    setRubberBand(null)
+    rubberBandStartRef.current = null
   }
 
   const handleDblClick = () => {
@@ -107,7 +153,9 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
           display: 'block' 
         }}
         onClick={handleClick}
+        onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
         onDblClick={handleDblClick}
       >
         <Layer>
@@ -117,28 +165,69 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
 
           {frameBboxes.map((b) => {
             const color = classColors[b.className] ?? '#ffffff'
-            const isSelected = b.id === selectedBboxId
+            const isSelected = selectedBboxIds.includes(b.id)
             return (
               <Group
                 key={b.id}
                 x={b.x} y={b.y}
+                ref={el => { if (el) nodeRefs.current[b.id] = el; else delete nodeRefs.current[b.id] }}
                 // bbox dragging functions
                 draggable={mode === 'select'}
                 listening={mode === 'select'}
+                onMouseDown={(e) => e.cancelBubble = true}
+                onDragStart={(e) => {
+                  e.cancelBubble = true
+                  // if dragging an unselected box, select only it
+                  const currentSelection = selectedBboxIds.includes(b.id) ? selectedBboxIds : [b.id]
+                  if (!selectedBboxIds.includes(b.id)) setSelectedBboxIds([b.id])
+                  // record start positions for all selected boxes
+                  dragStartPositions.current = {}
+                  currentSelection.forEach(id => {
+                    const node = nodeRefs.current[id]
+                    if (node) dragStartPositions.current[id] = { x: node.x(), y: node.y() }
+                  })
+                }}
+                onDragMove={(e) => {
+                  e.cancelBubble = true
+                  const start = dragStartPositions.current[b.id]
+                  if (!start) return
+                  const dx = e.target.x() - start.x
+                  const dy = e.target.y() - start.y
+                  // move all other selected boxes together
+                  selectedBboxIds.forEach(id => {
+                    if (id === b.id) return
+                    const node = nodeRefs.current[id]
+                    const s = dragStartPositions.current[id]
+                    if (node && s) { node.x(s.x + dx); node.y(s.y + dy) }
+                  })
+                }}
                 onDragEnd={(e) => {
                   e.cancelBubble = true
-                  updateBbox(b.id, { x: e.target.x(), y: e.target.y() })
+                  // batch update all selected boxes with their final positions
+                  const updates = selectedBboxIds.map(id => {
+                    const node = nodeRefs.current[id]
+                    return node ? { id, x: node.x(), y: node.y() } : null
+                  }).filter(Boolean)
+                  updateBboxes(updates)
+                  dragStartPositions.current = {}
                 }}
                 onClick={(e) => {
-                  if (mode === 'select') {
-                    e.cancelBubble = true
-                    setSelectedBboxId(b.id)
-                  } 
+                  if (mode !== 'select') return
+                  e.cancelBubble = true
+                  if (e.evt.shiftKey) {
+                    // shift+click: toggle this box in/out of selection
+                    setSelectedBboxIds(prev =>
+                      prev.includes(b.id) ? prev.filter(id => id !== b.id) : [...prev, b.id]
+                    )
+                  } else {
+                    // left click, no shift: select only this box
+                    setSelectedBboxIds([b.id])
+                  }
                 }}
                 onContextMenu={(e) => {
                   e.evt.preventDefault()
                   e.cancelBubble = true
-                  setSelectedBboxId(b.id)
+                  setSelectedBboxIds([b.id])
                   openContextMenu(e.evt.clientX, e.evt.clientY, b.id)
                 }}
                 onMouseEnter={(e) => {
@@ -179,6 +268,19 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
               strokeWidth={1}
               dash={[6, 3]}
               fill='rgba(255,255,255,0.08)'
+              listening={false}
+            />
+          )}
+          {rubberBand && (
+            <Rect
+              x={Math.min(rubberBand.x1, rubberBand.x2)}
+              y={Math.min(rubberBand.y1, rubberBand.y2)}
+              width={Math.abs(rubberBand.x2 - rubberBand.x1)}
+              height={Math.abs(rubberBand.y2 - rubberBand.y1)}
+              stroke='#4af'
+              strokeWidth={1}
+              dash={[4, 4]}
+              fill='rgba(64,170,255,0.08)'
               listening={false}
             />
           )}

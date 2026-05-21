@@ -32,7 +32,7 @@ function App() {
   // bbox states
   const [bboxesByFrame, setBboxesByFrame] = useState({}) // stores dict of frame:list of bbox
   const frameBboxes = bboxesByFrame[currentFrame] ?? []
-  const [selectedBboxId, setSelectedBboxId] = useState(null) // handles tracking of selected bbox, to change classes
+  const [selectedBboxIds, setSelectedBboxIds] = useState([]) // handles tracking of selected bboxes, to change classes/drag
   const [contextMenu, setContextMenu] = useState(null) // where to render floating menu, and for which bbox
 
   // bbox tags
@@ -81,16 +81,20 @@ function App() {
         e.preventDefault() // to prevent spacebar from triggering file explorer directly after video upload
         setIsPlaying(p => !p)
       }
-      if ((e.key === "Delete" || e.key === "Backspace") && selectedBboxId) { // ddelete bbox if selected + hit backspace/del
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedBboxIds.length > 0) { // delete bbox if selected + hit backspace/del
         e.preventDefault()
-        deleteBbox(selectedBboxId)
-        setSelectedBboxId(null)
+        deleteBboxes(selectedBboxIds)
+        setSelectedBboxIds([])
       }
       if (e.key === 'w' || e.key === 'W') setMode(m => m === 'draw' ? 'select' : 'draw') // toggle between select and draw mode
+      if (e.key === 'a' && e.ctrlKey) { // ctrl+a to select all boxes
+        e.preventDefault()
+        setSelectedBboxIds(frameBboxes.map(b => b.id))
+      }
     }
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [videoName, frameCount, frameInterval, selectedBboxId])
+  }, [videoName, frameCount, frameInterval, selectedBboxIds, frameBboxes])
 
   // video playback
   useEffect(() => {
@@ -138,19 +142,37 @@ function App() {
     }))
   }
 
-  function deleteBbox(id) { // select bbox + backspace/del to use
+    function deleteBbox(id) { // used for delete button in context menu + right sidebar
     setBboxesByFrame(prev => ({
       ...prev,
       [currentFrame]: (prev[currentFrame] ?? []).filter(b => b.id !== id)
     }))
   }
 
-  function updateBbox(id, newAttrs) {
+  function updateBbox(id, newAttrs) { // used for single box drags
     setBboxesByFrame(prev => ({
       ...prev,
       [currentFrame]: (prev[currentFrame] ?? []).map(b =>
         b.id === id ? { ...b, ...newAttrs } : b
       )
+    }))
+  }
+
+  function deleteBboxes(ids) { // delete group of bboxes
+    const idSet = new Set(ids)
+    setBboxesByFrame(prev => ({
+      ...prev,
+      [currentFrame]: (prev[currentFrame] ?? []).filter(b => !idSet.has(b.id))
+    }))
+  }
+
+  function updateBboxes(updates) { // update group of bboxes
+    setBboxesByFrame(prev => ({
+      ...prev,
+      [currentFrame]: (prev[currentFrame] ?? []).map(b => {
+        const update = updates.find(u => u.id === b.id)
+        return update ? { ...b, ...update } : b
+      })
     }))
   }
 
@@ -170,7 +192,7 @@ function App() {
 
   useEffect(() => {
     if (!contextMenu) return
-    const close = () => { setContextMenu(null); setSelectedBboxId(null) }
+    const close = () => { setContextMenu(null); setSelectedBboxIds([]) }
     window.addEventListener('click', close)
     return () => window.removeEventListener('click', close)
   }, [contextMenu])
@@ -263,7 +285,6 @@ return (
       {/* tag section */}
       <div style={{ borderTop: '1px solid #ccc', marginTop: 8, paddingTop: 8 }}>
         <h3>Tags</h3>
-        {!selectedBboxId && <p style={{ color: '#888', fontSize: 12 }}>Select a bbox to apply tags.</p>}
         {/* new tag input */}
         <input
           type="text"
@@ -275,32 +296,29 @@ return (
         />
         <button onClick={addTag}>Add</button>
         {/* tag list & application of tags on bbox */}
-        <ul style={{ textAlign: 'left', padding: '0 4px', listStyle: 'none' }}>
-          {tags.map(tag => {
-            const selectedBbox = frameBboxes.find(b => b.id === selectedBboxId)
-            const isChecked = selectedBbox ? (selectedBbox.tags ?? []).includes(tag) : false
-            return (
-              <li key={tag} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 0' }}>
-                <input
-                  type="checkbox"
-                  checked={isChecked}
-                  disabled={!selectedBboxId}
-                  onChange={() => toggleBboxTag(selectedBboxId, tag)}
-                />
-                <span style={{
-                  background: '#750000',
-                  color: '#FFFFFF',
-                  borderRadius: 3,
-                  padding: '1px 5px',
-                  fontSize: 11
-                }}>
-                  {tag}
-                </span>
-                <button onClick={() => deleteTag(tag)} style={{ marginLeft: 'auto' }}>x</button>
-              </li>
-            )
-          })}
-        </ul>
+          {selectedBboxIds.length === 0 && <p style={{ color: '#888', fontSize: 12 }}>Select a bbox to apply tags.</p>}
+          {selectedBboxIds.length > 1 && <p style={{ color: '#888', fontSize: 12 }}>{selectedBboxIds.length} boxes selected.</p>}
+
+          <ul style={{ textAlign: 'left', padding: '0 4px', listStyle: 'none' }}>
+            {tags.map(tag => {
+              const selectedBboxes = frameBboxes.filter(b => selectedBboxIds.includes(b.id))
+              const isChecked = selectedBboxes.length > 0 && selectedBboxes.every(b => (b.tags ?? []).includes(tag))
+              return (
+                <li key={tag} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 0' }}>
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    disabled={selectedBboxIds.length === 0}
+                    onChange={() => selectedBboxIds.forEach(id => toggleBboxTag(id, tag))}
+                  />
+                  <span style={{ background: '#750000', color: '#FFFFFF', borderRadius: 3, padding: '1px 5px', fontSize: 11 }}>
+                    {tag}
+                  </span>
+                  <button onClick={() => deleteTag(tag)} style={{ marginLeft: 'auto' }}>x</button>
+                </li>
+              )
+            })}
+          </ul>
       </div>
     </div>
 
@@ -322,7 +340,8 @@ return (
             style={{ 
               fontWeight: mode === 'select' ? 'bold' : 'normal',
               background: mode === 'select' ? '#750000' : '',
-              color: mode === 'select' ? '#fff' : ''
+              color: mode === 'select' ? '#fff' : '',
+              padding: '4px'
             }}
           >
             Select
@@ -332,7 +351,8 @@ return (
             style={{
               fontWeight: mode === 'draw' ? 'bold' : 'normal',
               background: mode === 'draw' ? '#750000' : '',
-              color: mode === 'draw' ? '#fff' : ''
+              color: mode === 'draw' ? '#fff' : '',
+              padding: '4px'
             }}
           >
             Draw
@@ -350,11 +370,12 @@ return (
             classColors={classColors}
             frameBboxes={frameBboxes}
             addBbox={addBbox}
-            selectedBboxId={selectedBboxId}
-            setSelectedBboxId={setSelectedBboxId}
+            selectedBboxIds={selectedBboxIds}
+            setSelectedBboxIds={setSelectedBboxIds}
             openContextMenu={openContextMenu}
             mode={mode}
             updateBbox={updateBbox}
+            updateBboxes={updateBboxes}
           /> {/* calls fastAPI for image */}
           <div>
             {/* playback navigation */}
@@ -410,7 +431,7 @@ return (
                 key={b.id} 
                 title={b.id}
                 onContextMenu={(e) => { e.preventDefault(); openContextMenu(e.clientX, e.clientY, b.id) }}
-                style={{ background: selectedBboxId === b.id ? '#333' : 'transparent' }}
+                style={{ background: selectedBboxIds.includes(b.id) ? '#333' : 'transparent' }}
               >
                 {/* bbox tags */}
                 {i + 1}. {b.className} <span style={{ color: '#888', fontSize: 11 }}>#{b.id.slice(0, 6)}</span>
