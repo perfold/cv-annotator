@@ -35,18 +35,26 @@ Open http://localhost:5173/ in your browser, to view the frontend
 **&larr;**: go back 1 frame\
 **&rarr;**: go forward 1 frame\
 **, (comma)**: go back 10* frames\
-**. (fullstop)** go forward 10* frames\
+**. (fullstop)**: go forward 10* frames\
 spacebar: play/pause video\
 
 *number of frames/interval can be changed
 
 ### Annotation
+
+**W**: toggle between 'select' and 'draw' mode\
+
+#### In 'draw' mode:
 **single left click**: start drawing a new bounding box (corner)\
 **double left click**: finish drawing bounding box (opposite corner)\
 
-**single right click**: launch bbox context menu, to change bbox's class/add tags/delete bbox\
-**shift/ctrl + left click**: select existing bbox\
-**shift/ctrl + left click & backspace/delete**: select and delete existing bbox\
+#### In 'select' mode:
+**left click**: select existing bbox\
+**left click + backspace/delete**: select and delete existing bbox\
+**right click**: launch bbox context menu, to change bbox's class/add tags/delete bbox\
+
+**left click + drag**: move existing bbox\
+**double left click**: set new position of bbox\
 
 ## Progress
 ### Basic Features
@@ -57,7 +65,7 @@ spacebar: play/pause video\
 - [x] Manually draw upright bboxes 
 - [x] Change class of existing bbox
 - [x] Delete existing bbox
-- [ ] Drag and move individual bbox
+- [x] Drag and move individual bbox
 - [x] Add configurable tags to bboxes (e.g. of tags: occluded, blur)
 - [ ] Zoom in/out of image
 - [ ] Drag and pan around image 

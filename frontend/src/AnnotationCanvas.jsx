@@ -1,8 +1,8 @@
-import { Stage, Layer, Image as KonvaImage, Rect, Text } from 'react-konva'
+import { Stage, Layer, Image as KonvaImage, Rect, Text, Group, Label, Tag } from 'react-konva'
 import useImage from 'use-image'
 import { useState, useRef, useEffect } from 'react'
 
-function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, addBbox, selectedBboxId, setSelectedBboxId, openContextMenu}) {
+function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, addBbox, selectedBboxId, setSelectedBboxId, openContextMenu, mode, updateBbox}) {
     
   // make stage size self-adjusting to the screen size
   const containerRef = useRef()
@@ -56,6 +56,10 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
 
   const handleClick = (e) => {
     if (e.evt.button === 2) {setSelectedBboxId(null); return}  // ensure right click doesnt trigger new bbox, only used to open context menu
+    if (mode === 'select') { // in select mode, clicking on canvas deselects bbox
+      setSelectedBboxId(null)
+      return
+    }
     setSelectedBboxId(null)
     if (!activeClass) return
     if (isDrawing) return // ignore the second click if current drawing
@@ -88,7 +92,8 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
     : null
 
   return (
-    <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>      {!activeClass && (
+    <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>    
+      {mode === 'draw' && !activeClass && ( // hides 'select class to start annotating' if in select mode
         <p style={{ color: '#750000', margin: '4px 0' }}>
           Select a class to start annotating.
         </p>
@@ -97,7 +102,10 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
         ref={stageRef}
         width={stageWidth}
         height={stageHeight}
-        style={{ cursor: isDrawing ? 'crosshair' : 'default', display: 'block'}}
+        style={{ 
+          cursor: mode === 'draw' ? (isDrawing ? 'crosshair' : 'crosshair') : 'default', 
+          display: 'block' 
+        }}
         onClick={handleClick}
         onMouseMove={handleMouseMove}
         onDblClick={handleDblClick}
@@ -111,39 +119,57 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
             const color = classColors[b.className] ?? '#ffffff'
             const isSelected = b.id === selectedBboxId
             return (
-              <Rect
+              <Group
                 key={b.id}
                 x={b.x} y={b.y}
-                width={b.width} height={b.height}
-                stroke= {color}
-                strokeWidth={isSelected ? 6 : 2} // thickens line when box is highlighted
-                fill={color + '25'} // intensity of bbox fill colour
-                onClick={(e) => {
-                    if (e.evt.shiftKey || e.evt.ctrlKey){
-                        e.cancelBubble = true
-                        setSelectedBboxId(b.id)
-                    }
+                // bbox dragging functions
+                draggable={mode === 'select'}
+                listening={mode === 'select'}
+                onDragEnd={(e) => {
+                  e.cancelBubble = true
+                  updateBbox(b.id, { x: e.target.x(), y: e.target.y() })
                 }}
-                onContextMenu={(e) => { 
-                    e.evt.preventDefault()   
+                onClick={(e) => {
+                  if (mode === 'select') {
                     e.cancelBubble = true
                     setSelectedBboxId(b.id)
-                    openContextMenu(e.evt.clientX, e.evt.clientY, b.id)
+                  } 
                 }}
-              />
+                onContextMenu={(e) => {
+                  e.evt.preventDefault()
+                  e.cancelBubble = true
+                  setSelectedBboxId(b.id)
+                  openContextMenu(e.evt.clientX, e.evt.clientY, b.id)
+                }}
+                onMouseEnter={(e) => {
+                  if (mode === 'select') e.target.getStage().container().style.cursor = 'move'
+                }}
+                onMouseLeave={(e) => {
+                  e.target.getStage().container().style.cursor = mode === 'draw' ? 'crosshair' : 'default'
+                }}
+              >
+                {/* bbox settings */}
+                <Rect
+                  x={0} y={0}
+                  width={b.width} 
+                  height={b.height}
+                  stroke={color}
+                  strokeWidth={isSelected ? 6 : 2} // thickens line when box is highlighted
+                  fill={color + '25'} // intensity of bbox fill colour
+                />
+                {/* class:id tag above bbox */}
+                <Label x={0} y={-20}> 
+                  <Tag fill='white' />
+                  <Text
+                    text={`${b.className}: ${b.id.slice(0, 6)}`}
+                    fontSize={10}
+                    fill='#000000'
+                    padding={3}
+                  />
+                </Label>
+              </Group>
             )
           })}
-
-          {frameBboxes.map((b) => (
-            <Text
-              key={b.id + '_lbl'}
-              x={b.x + 4} y={b.y + 4}
-              text={`${b.className}: ${b.id.slice(0, 6)}`}
-              fontSize={12}
-              fill={classColors[b.className] ?? '#ffffff'}
-              listening={false}
-            />
-          ))}
 
           {preview && (
             <Rect

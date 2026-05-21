@@ -21,6 +21,7 @@ function App() {
   const [isPlaying, setIsPlaying] = useState(false)
   const intervalRef = useRef(null)
   const [frameInterval, setFrameInterval] = useState(10) // user definable keyframe interval, 10 is default
+  const [mode, setMode] = useState('select') // toggle between select and draw mode 
 
   // class labels
   const [classes, setClasses] = useState([]) // list of existing classes
@@ -85,6 +86,7 @@ function App() {
         deleteBbox(selectedBboxId)
         setSelectedBboxId(null)
       }
+      if (e.key === 'w' || e.key === 'W') setMode(m => m === 'draw' ? 'select' : 'draw') // toggle between select and draw mode
     }
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
@@ -140,6 +142,15 @@ function App() {
     setBboxesByFrame(prev => ({
       ...prev,
       [currentFrame]: (prev[currentFrame] ?? []).filter(b => b.id !== id)
+    }))
+  }
+
+  function updateBbox(id, newAttrs) {
+    setBboxesByFrame(prev => ({
+      ...prev,
+      [currentFrame]: (prev[currentFrame] ?? []).map(b =>
+        b.id === id ? { ...b, ...newAttrs } : b
+      )
     }))
   }
 
@@ -214,7 +225,7 @@ return (
         type="text"
         value={newClassName}
         onChange={(e) => setNewClassName(e.target.value)}
-        onKeyDown={(e) => { if (e.key === "Enter") addClass() }}
+        onKeyDown={(e) => { e.stopPropagation() ; if (e.key === "Enter") addClass() }}
         placeholder="Enter new class"
         style={{ width: '100%', boxSizing: 'border-box' }}
       />
@@ -258,7 +269,7 @@ return (
           type="text"
           value={newTagName}
           onChange={(e) => setNewTagName(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') addTag() }}
+          onKeyDown={(e) => { e.stopPropagation() ; if (e.key === 'Enter') addTag() }}
           placeholder="Add new tag"
           style={{ width: '100%', boxSizing: 'border-box' }}
         />
@@ -295,14 +306,40 @@ return (
 
     {/* center area */}
 
-    <div style={{ flex: 1, padding: "8px", display: "flex", flexDirection: "column", alignItems: "stretch", textAlign: 'center'
-    }}>
-      {/* video file upload */}
-      <input
-        type="file"
-        accept="video/*"
-        onChange={(e) => uploadVideo(e.target.files[0])}
-      />
+    <div style={{ flex: 1, padding: "8px", display: "flex", flexDirection: "column", alignItems: "stretch", textAlign: 'center' }}>      
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+        {/* video input button */}
+        <input
+          type="file"
+          accept="video/*"
+          onChange={(e) => uploadVideo(e.target.files[0])}
+        />
+        {/* mode toggle button */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <h4 style={{ margin: 0 }}> Mode Toggle (W)</h4>
+          <button
+            tabIndex={-1} onClick={() => setMode('select')}
+            style={{ 
+              fontWeight: mode === 'select' ? 'bold' : 'normal',
+              background: mode === 'select' ? '#750000' : '',
+              color: mode === 'select' ? '#fff' : ''
+            }}
+          >
+            Select
+          </button>
+          <button
+            tabIndex={-1} onClick={() => setMode('draw')}
+            style={{
+              fontWeight: mode === 'draw' ? 'bold' : 'normal',
+              background: mode === 'draw' ? '#750000' : '',
+              color: mode === 'draw' ? '#fff' : ''
+            }}
+          >
+            Draw
+          </button>
+        </div>
+      </div>
+
       {/* konva stage: image display */}
       {videoName && (
         <div style={{width: '100%'}}>
@@ -316,14 +353,16 @@ return (
             selectedBboxId={selectedBboxId}
             setSelectedBboxId={setSelectedBboxId}
             openContextMenu={openContextMenu}
+            mode={mode}
+            updateBbox={updateBbox}
           /> {/* calls fastAPI for image */}
           <div>
             {/* playback navigation */}
-            <button onClick={() => setCurrentFrame(f => Math.max(0, f - frameInterval))} disabled={currentFrame === 0}>{"<<"}</button> {/* interval back */}
-            <button onClick={prevFrame} disabled={currentFrame === 0}>{"<"}</button> {/* back button */}
+            <button tabIndex={-1} onClick={() => setCurrentFrame(f => Math.max(0, f - frameInterval))} disabled={currentFrame === 0}>{"<<"}</button> {/* interval back */}
+            <button tabIndex={-1} onClick={prevFrame} disabled={currentFrame === 0}>{"<"}</button> {/* back button */}
             <span> Frame {currentFrame + 1} / {frameCount} </span>
-            <button onClick={nextFrame} disabled={currentFrame === frameCount - 1}>{">"}</button> {/* forward button */}
-            <button onClick={() => setCurrentFrame(f => Math.min(frameCount - 1, f + frameInterval))} disabled={currentFrame === frameCount - 1}>{">>"}  </button> {/* interval forward */}
+            <button tabIndex={-1} onClick={nextFrame} disabled={currentFrame === frameCount - 1}>{">"}</button> {/* forward button */}
+            <button tabIndex={-1} onClick={() => setCurrentFrame(f => Math.min(frameCount - 1, f + frameInterval))} disabled={currentFrame === frameCount - 1}>{">>"}  </button> {/* interval forward */}
           </div>
           <div>
             {/* frame interval setter */}
@@ -339,7 +378,7 @@ return (
           </div>
           {/* play/pause button */}
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <button onClick={() => setIsPlaying(p => !p)}>
+            <button tabIndex={-1} onClick={() => setIsPlaying(p => !p)}>
               {isPlaying ? "Pause" : "Play"}
             {/* video slider */}
             </button>
