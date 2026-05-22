@@ -10,6 +10,18 @@ const PALETTE = [ // anotations will be auto assigned one of these colors
 ]
 const DEFAULT_TAGS = ['occluded', 'blur', 'cut-off', 'image-error'] // default tags
 
+// save and load annotations from data folder
+async function saveSession(videoName, bboxesByFrame, classes, classColors) {
+  await axios.post(`http://localhost:8000/save/${videoName}`, {
+    bboxesByFrame, classes, classColors,
+    savedAt: new Date().toISOString()
+  })
+}
+
+async function loadSession(videoName) {
+  const res = await axios.get(`http://localhost:8000/load/${videoName}`)
+  return Object.keys(res.data).length > 0 ? res.data : null
+}
 
 function App() {
   
@@ -22,6 +34,8 @@ function App() {
   const intervalRef = useRef(null)
   const [frameInterval, setFrameInterval] = useState(10) // user definable keyframe interval, 10 is default
   const [mode, setMode] = useState('select') // toggle between select and draw mode 
+  const [showSaved, setShowSaved] = useState(false)
+  const lastSavedRef = useRef(null)
 
   // class labels
   const [classes, setClasses] = useState([]) // list of existing classes
@@ -58,7 +72,35 @@ function App() {
     setFps(res.data.frame_rate)
     setCurrentFrame(0)
     setBboxesByFrame({})
+
+    // resume annotations
+    const session = await loadSession(res.data.video_name)
+    if (session) {
+      const resume = window.confirm(`Resume previous session?\nLast saved: ${new Date(session.savedAt).toLocaleString()}`)
+      if (resume) {
+        setBboxesByFrame(session.bboxesByFrame)
+        setClasses(session.classes)
+        setClassColors(session.classColors ?? {})
+      }
+    }
   }
+
+  // autosave annotations, only autosave if new bboxes drawn
+  useEffect(() => {
+    if (!videoName) return
+    const interval = setInterval(() => {
+      const current = JSON.stringify(bboxesByFrame)
+      if (current === lastSavedRef.current) return  // nothing changed, skip
+      saveSession(videoName, bboxesByFrame, classes, classColors)
+        .then(() => {
+          lastSavedRef.current = JSON.stringify(bboxesByFrame)
+          setShowSaved(true)
+          setTimeout(() => setShowSaved(false), 5000)
+        })
+    }, 15000) // every 15 secs
+
+    return () => clearInterval(interval)
+  }, [videoName, bboxesByFrame, classes, classColors])
 
   // frame navigation
   function prevFrame() {
@@ -95,6 +137,28 @@ function App() {
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [videoName, frameCount, frameInterval, selectedBboxIds, frameBboxes])
+
+  // prevent certain shortcuts (ctrl+s) from triggering browser
+  useEffect(() => {
+    const blockBrowserShortcuts = (e) => {
+      if (!e.ctrlKey) return
+      if (!['s', 'z', 'y', 'c', 'v'].includes(e.key)) return
+      e.preventDefault()
+
+      if (e.key === 's') {
+        if (!videoName) return
+        saveSession(videoName, bboxesByFrame, classes, classColors)
+          .then(() => {
+            lastSavedRef.current = JSON.stringify(bboxesByFrame)
+            setShowSaved(true)
+            setTimeout(() => setShowSaved(false), 5000)
+          })
+      }
+      // ctrl+z, ctrl+y, ctrl+c, ctrl+v: blocked for now, logic added later
+    }
+    window.addEventListener('keydown', blockBrowserShortcuts)
+    return () => window.removeEventListener('keydown', blockBrowserShortcuts)
+  }, [videoName, bboxesByFrame, classes, classColors])
 
   // video playback
   useEffect(() => {
@@ -326,12 +390,38 @@ return (
 
     <div style={{ flex: 1, padding: "8px", display: "flex", flexDirection: "column", alignItems: "stretch", textAlign: 'center' }}>      
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         {/* video input button */}
-        <input
-          type="file"
-          accept="video/*"
-          onChange={(e) => uploadVideo(e.target.files[0])}
-        />
+          <input
+            type="file"
+            accept="video/*"
+            onChange={(e) => uploadVideo(e.target.files[0])}
+          />
+          <button
+            tabIndex={-1}
+            disabled={!videoName}
+            onClick={() => saveSession(videoName, bboxesByFrame, classes, classColors)
+              .then(() => {
+                lastSavedRef.current = JSON.stringify(bboxesByFrame)
+                setShowSaved(true)
+                setTimeout(() => setShowSaved(false), 5000)
+              })
+            }
+          >
+            Save
+          </button>
+        </div>
+        {/* saved indicator */}
+        <span style={{
+          fontSize: 12,
+          color: '#009000',
+          opacity: showSaved ? 1 : 0,
+          transition: 'opacity 0.5s ease',
+          pointerEvents: 'none',
+        }}>
+          ✓ Saved
+        </span>
+
         {/* mode toggle button */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <h4 style={{ margin: 0 }}> Mode Toggle (W)</h4>

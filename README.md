@@ -9,12 +9,19 @@ annotation-tool/
 ├── frontend/          React + Vite
 │   └── src/
 │       ├── App.jsx
+│       ├── AnnotationCanvas.jsx
 │       └── main.jsx
 ├── backend/           FastAPI + Uvicorn
 │   ├── main.py
 │   └── requirements.txt
-├── models/            YOLOv7 tiny, SAM (gitignored)
-├── data/              VisDrone dataset + extracted frames (gitignored)
+├── models/            YOLOv7 tiny, SAM weights (gitignored)
+├── data/              (gitignored)
+│   ├── input/         uploaded videos
+│   └── output/        extracted frames + annotations per video
+│       └── video_name/
+│           ├── 0000001.jpg
+│           ├── ...
+│           └── annotations.json
 ├── .gitignore
 └── README.md
 ```
@@ -63,6 +70,7 @@ Open http://localhost:5173/ in your browser, to view the frontend
 ### Annotation
 
 `W` — toggle between **Select** and **Draw** mode
+`Ctrl + S` — manually save annotations
 
 ### Draw Mode
 | Input | Action |
@@ -96,7 +104,7 @@ Open http://localhost:5173/ in your browser, to view the frontend
 - [x] Add configurable tags to bboxes (e.g. of tags: occluded, blur)
 - [x] Zoom in/out of image
 - [x] Drag and pan around image 
-- [ ] Save annotation progress and resume later 
+- [x] Save annotation progress and resume later 
 - [ ] Export final annotations in “CVAT for Video” .xml format 
 - [x] Group shift all bboxes in a single frame at once 
  

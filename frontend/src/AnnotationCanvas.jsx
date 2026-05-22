@@ -57,11 +57,14 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
   const stageRef = useRef()
 
   const getPointerPos = () => {
-    const pos = stageRef.current?.getPointerPosition()
+    const stage = stageRef.current
+    if (!stage) return null
+    const pos = stage.getPointerPosition()
     if (!pos) return null
+    const scale = stage.scaleX()
     return {
-      x: (pos.x - stagePos.x) / stageScale,
-      y: (pos.y - stagePos.y) / stageScale,
+      x: (pos.x - stagePos.x) / scale,
+      y: (pos.y - stagePos.y) / scale,
     }
   }
 

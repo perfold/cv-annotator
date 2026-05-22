@@ -1,8 +1,9 @@
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, Body
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import os
 import cv2
+import json
 
 app = FastAPI()
 
@@ -61,3 +62,20 @@ async def upload_video(file: UploadFile = File(...)):
 def get_frame(video_name: str, frame_idx: int):
     frame_path = os.path.join(OUTPUT_DIR, video_name, f"{frame_idx:07d}.jpg")
     return FileResponse(frame_path)
+
+# function to save annotations
+@app.post("/save/{video_name}")
+async def save_annotations(video_name: str, payload: dict = Body(...)):
+    path = os.path.join(OUTPUT_DIR, video_name, "annotations.json")
+    with open(path, "w") as f:
+        json.dump(payload, f, indent=2)
+    return {"status": "saved"}
+
+# function to load annotations from prev save
+@app.get("/load/{video_name}")
+async def load_annotations(video_name: str):
+    path = os.path.join(OUTPUT_DIR, video_name, "annotations.json")
+    if not os.path.exists(path):
+        return {}
+    with open(path) as f:
+        return json.load(f)
