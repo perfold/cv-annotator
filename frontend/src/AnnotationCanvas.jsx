@@ -14,17 +14,21 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
   const [rubberBand, setRubberBand] = useState(null) // rubber band dimensions
   const [stageScale, setStageScale] = useState(1) // to allow for zoom in/out
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 })
-  
+  const isPanningRef = useRef(false)
+  const panStartRef = useRef({ x: 0, y: 0 }) // handle panning around stage
+  const stageStartPosRef = useRef({ x: 0, y: 0 })
+  const justPannedRef = useRef(false) // prevent ctrl drag from drawing bbox
+
   useEffect(() => {
-  if (!containerRef.current) return
-  setContainerWidth(containerRef.current.getBoundingClientRect().width)
-  
-  const observer = new ResizeObserver(entries => {
-    setContainerWidth(entries[0].contentRect.width)
-  })
-  observer.observe(containerRef.current)
-  return () => observer.disconnect()
-}, [])
+    if (!containerRef.current) return
+    setContainerWidth(containerRef.current.getBoundingClientRect().width)
+    
+    const observer = new ResizeObserver(entries => {
+      setContainerWidth(entries[0].contentRect.width)
+    })
+    observer.observe(containerRef.current)
+    return () => observer.disconnect()
+  }, [])
 
   const [image, status] = useImage(frameUrl, 'anonymous')
 
@@ -73,6 +77,7 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
     a.y + a.height < rb.y || a.y > rb.y + rb.height)
 
   const handleClick = (e) => {
+    if (justPannedRef.current) { justPannedRef.current = false; return } // if just pan, don't draw bbox
     if (e.evt.button === 2) {setSelectedBboxIds([]); return}  // ensure right click doesnt trigger new bbox, only used to open context menu
     if (rubberBandFiredRef.current) { rubberBandFiredRef.current = false; return } // prevent click after rubberband
     if (mode === 'select') { // in select mode, clicking on canvas deselects bbox
@@ -88,7 +93,19 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
     setDrawCurrent(pos)
   }
 
-  const handleMouseMove = () => {
+  const handleMouseMove = (e) => {
+    if (isPanningRef.current) {
+      const stage = e.target.getStage()
+      const ptr = stage.getPointerPosition()
+      const dx = ptr.x - panStartRef.current.x
+      const dy = ptr.y - panStartRef.current.y
+      stage.position({
+        x: stageStartPosRef.current.x + dx,
+        y: stageStartPosRef.current.y + dy,
+      })
+      return
+    }
+
     // basic draw logic
     if (isDrawing) {
       const pos = getPointerPos()
@@ -107,6 +124,18 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
   }
 
   const handleMouseDown = (e) => {
+    const isMiddle = e.evt.button === 1
+    const isCtrlPan = e.evt.ctrlKey && e.evt.button === 0
+
+    if (isMiddle || isCtrlPan) {
+      e.evt.preventDefault()
+      isPanningRef.current = true
+      const stage = e.target.getStage()
+      const ptr = stage.getPointerPosition()
+      panStartRef.current = { x: ptr.x, y: ptr.y } // pan around stage
+      stageStartPosRef.current = { x: stage.x(), y: stage.y() }
+      return  // don't start drawing
+    }
     if (mode !== 'select') return
     if (e.evt.button !== 0) return
     const pos = getPointerPos()
@@ -114,6 +143,12 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
   }
 
   const handleMouseUp = (e) => {
+    if (isPanningRef.current) {
+      isPanningRef.current = false
+      justPannedRef.current = true // to prevent drawing of bbox when release pan
+      return
+    }
+
     if (!rubberBand) { rubberBandStartRef.current = null; return }
     const rb = {
       x: Math.min(rubberBand.x1, rubberBand.x2),
@@ -218,8 +253,12 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
                 // bbox dragging functions
                 draggable={mode === 'select'}
                 listening={mode === 'select'}
-                onMouseDown={(e) => e.cancelBubble = true}
+                onMouseDown={(e) => {
+                  if (e.evt.ctrlKey) return  
+                  e.cancelBubble = true
+                }}
                 onDragStart={(e) => {
+                  if (e.evt.ctrlKey) { e.target.stopDrag(); return } // prevent dragging of bbox when panning/dragging image
                   e.cancelBubble = true
                   // if dragging an unselected box, select only it
                   const currentSelection = selectedBboxIds.includes(b.id) ? selectedBboxIds : [b.id]

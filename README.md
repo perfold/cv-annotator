@@ -56,6 +56,7 @@ Open http://localhost:5173/ in your browser, to view the frontend
 | Scroll wheel up | Zoom in (toward cursor) |
 | Scroll wheel down | Zoom out (min 1x, max 10x) |
 | Double-click canvas | Reset zoom and position to default |
+| Ctrl + drag / Middle mouse drag | Pan around canvas |
 
 ---
 
@@ -94,7 +95,7 @@ Open http://localhost:5173/ in your browser, to view the frontend
 - [x] Drag and move individual bbox
 - [x] Add configurable tags to bboxes (e.g. of tags: occluded, blur)
 - [x] Zoom in/out of image
-- [ ] Drag and pan around image 
+- [x] Drag and pan around image 
 - [ ] Save annotation progress and resume later 
 - [ ] Export final annotations in “CVAT for Video” .xml format 
 - [x] Group shift all bboxes in a single frame at once 
