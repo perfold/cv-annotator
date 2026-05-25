@@ -105,7 +105,7 @@ Open http://localhost:5173/ in your browser, to view the frontend
 - [x] Zoom in/out of image
 - [x] Drag and pan around image 
 - [x] Save annotation progress and resume later 
-- [ ] Export final annotations in “CVAT for Video” .xml format 
+- [x] Export final annotations in “CVAT for Video” .xml format 
 - [x] Group shift all bboxes in a single frame at once 
  
 ### Advanced Features

@@ -10,6 +10,8 @@ const PALETTE = [ // anotations will be auto assigned one of these colors
 ]
 const DEFAULT_TAGS = ['occluded', 'blur', 'cut-off', 'image-error'] // default tags
 
+const QUALITY_PRESETS = { low: 31, medium: 15, high: 1 } // extracted frames' jpg quality
+
 // save and load annotations from data folder
 async function saveSession(videoName, bboxesByFrame, classes, classColors) {
   await axios.post(`http://localhost:8000/save/${videoName}`, {
@@ -37,6 +39,8 @@ function App() {
   const [showSaved, setShowSaved] = useState(false)
   const lastSavedRef = useRef(null)
   const imageDimsRef = useRef({ origW: 0, origH: 0, dispW: 0, dispH: 0 })
+  const [quality, setQuality] = useState('low') // set quality of extracted frames, default low
+  const [isExtracting, setIsExtracting] = useState(false) 
 
   // class labels
   const [classes, setClasses] = useState([]) // list of existing classes
@@ -66,6 +70,7 @@ function App() {
   async function uploadVideo(file) {
     const formData = new FormData()
     formData.append("file", file)
+    formData.append("quality", QUALITY_PRESETS[quality])
 
     const res = await axios.post("http://localhost:8000/upload-video", formData)
     setVideoName(res.data.video_name)
@@ -86,6 +91,16 @@ function App() {
     }
   }
 
+  // trigger re-extraction when quality changes
+  async function changeQuality(newQuality) {
+    if (!videoName || newQuality === quality) return
+    setQuality(newQuality)
+    setIsExtracting(true)
+    await axios.post(`http://localhost:8000/reextract/${videoName}`, {
+      quality: QUALITY_PRESETS[newQuality]
+    })
+    setIsExtracting(false)
+  }
   // autosave annotations, only autosave if new bboxes drawn
   useEffect(() => {
     if (!videoName) return
@@ -530,31 +545,63 @@ return (
           ✓ Saved
         </span>
 
-        {/* mode toggle button */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <h4 style={{ margin: 0 }}> Mode Toggle (W)</h4>
-          <button
-            tabIndex={-1} onClick={() => setMode('select')}
-            style={{ 
-              fontWeight: mode === 'select' ? 'bold' : 'normal',
-              background: mode === 'select' ? '#750000' : '',
-              color: mode === 'select' ? '#fff' : '',
-              padding: '4px'
-            }}
-          >
-            Select
-          </button>
-          <button
-            tabIndex={-1} onClick={() => setMode('draw')}
-            style={{
-              fontWeight: mode === 'draw' ? 'bold' : 'normal',
-              background: mode === 'draw' ? '#750000' : '',
-              color: mode === 'draw' ? '#fff' : '',
-              padding: '4px'
-            }}
-          >
-            Draw
-          </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {/* mode toggle button */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+            <h4 style={{ margin: 0 }}> Mode Toggle (W)</h4>
+            <button
+              tabIndex={-1} onClick={() => setMode('select')}
+              style={{ 
+                fontWeight: mode === 'select' ? 'bold' : 'normal',
+                background: mode === 'select' ? '#750000' : '',
+                color: mode === 'select' ? '#fff' : '',
+                padding: '4px'
+              }}
+            >
+              Select
+            </button>
+            <button
+              tabIndex={-1} onClick={() => setMode('draw')}
+              style={{
+                fontWeight: mode === 'draw' ? 'bold' : 'normal',
+                background: mode === 'draw' ? '#750000' : '',
+                color: mode === 'draw' ? '#fff' : '',
+                padding: '4px'
+              }}
+            >
+              Draw
+            </button>
+          </div>
+          <div>
+            {/* frame quality toggle */}
+            {videoName && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+                <h4 style={{ margin: 0 }}>Quality</h4>
+                {['low', 'medium', 'high'].map(q => (
+                  <button
+                    key={q}
+                    tabIndex={-1}
+                    disabled={isExtracting}
+                    onClick={() => changeQuality(q)}
+                    style={{
+                      fontWeight: quality === q ? 'bold' : 'normal',
+                      background: quality === q ? '#750000' : '',
+                      color: quality === q ? '#fff' : '',
+                      padding: '4px'
+                    }}
+                  >
+                    {q.charAt(0).toUpperCase() + q.slice(1)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {/* re-extraction message */}
+          {isExtracting && (
+            <p style={{ color: '#750000', margin: '0', fontSize: '16px' }}>
+              Re-extracting frames, please wait...
+            </p>
+          )}
         </div>
       </div>
 
@@ -563,7 +610,7 @@ return (
         <div style={{width: '100%'}}>
           <p>Loaded: {videoName} ({frameCount} frames)</p> {/* shows total frame ct */}
           <AnnotationCanvas
-            frameUrl={`http://localhost:8000/frame/${videoName}/${currentFrame}`}
+            frameUrl={`http://localhost:8000/frame/${videoName}/${currentFrame}?q=${quality}`}
             activeClass={activeClass}
             classColors={classColors}
             frameBboxes={frameBboxes}
@@ -577,11 +624,11 @@ return (
           /> {/* calls fastAPI for image */}
           <div>
             {/* playback navigation */}
-            <button tabIndex={-1} onClick={() => setCurrentFrame(f => Math.max(0, f - frameInterval))} disabled={currentFrame === 0}>{"<<"}</button> {/* interval back */}
-            <button tabIndex={-1} onClick={prevFrame} disabled={currentFrame === 0}>{"<"}</button> {/* back button */}
+            <button tabIndex={-1} onClick={() => setCurrentFrame(f => Math.max(0, f - frameInterval))} disabled={currentFrame === 0 || isExtracting}>{"<<"}</button> {/* interval back */}
+            <button tabIndex={-1} onClick={prevFrame} disabled={currentFrame === 0 || isExtracting}>{"<"}</button> {/* back button */}
             <span> Frame {currentFrame + 1} / {frameCount} </span>
-            <button tabIndex={-1} onClick={nextFrame} disabled={currentFrame === frameCount - 1}>{">"}</button> {/* forward button */}
-            <button tabIndex={-1} onClick={() => setCurrentFrame(f => Math.min(frameCount - 1, f + frameInterval))} disabled={currentFrame === frameCount - 1}>{">>"}  </button> {/* interval forward */}
+            <button tabIndex={-1} onClick={nextFrame} disabled={currentFrame === frameCount - 1 || isExtracting}>{">"}</button> {/* forward button */}
+            <button tabIndex={-1} onClick={() => setCurrentFrame(f => Math.min(frameCount - 1, f + frameInterval))} disabled={currentFrame === frameCount - 1 || isExtracting}>{">>"}  </button> {/* interval forward */}
           </div>
           <div>
             {/* frame interval setter */}
@@ -597,8 +644,8 @@ return (
           </div>
           {/* play/pause button */}
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <button tabIndex={-1} onClick={() => setIsPlaying(p => !p)}>
-              {isPlaying ? "Pause" : "Play"}
+            <button tabIndex={-1} onClick={() => setIsPlaying(p => !p)} disabled={isExtracting}>
+              {isPlaying ? "Pause" : "Play"} 
             {/* video slider */}
             </button>
             <input
@@ -608,6 +655,7 @@ return (
               value={currentFrame}
               onChange={(e) => setCurrentFrame(Number(e.target.value))}
               style={{ flex: 1, accentColor: "#750000" }}
+              disabled={isExtracting}
             />
             <span>{formatTime(currentFrame / fps)} / {formatTime(frameCount / fps)}</span>
           </div>

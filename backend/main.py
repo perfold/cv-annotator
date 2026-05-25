@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, Body
+from fastapi import FastAPI, File, UploadFile, Body, Form
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import os
@@ -19,8 +19,7 @@ DATA_DIR = "../data"
 INPUT_DIR = os.path.join(DATA_DIR, "input")
 OUTPUT_DIR = os.path.join(DATA_DIR, "output")
 
-JPEG_QUALITY = 15 # 1 (highest quality) to 31 (lowest quality)
-EXTRACTION_METADATA_FILE = "extraction_metadata.json"
+EXTRACTION_METADATA_FILE = "extraction_metadata.json" # stores jpeg_quality variable
 
 # get frame rate of video using FFmpeg
 def get_fps(video_path: str) -> float:
@@ -42,10 +41,10 @@ def get_fps(video_path: str) -> float:
     return num / den
 
 # save extraction quality into a .json in output folder
-def save_extraction_metadata(output_folder: str):
+def save_extraction_metadata(output_folder: str, quality: int):
     path = Path(output_folder) / EXTRACTION_METADATA_FILE
     with open(path, "w") as f:
-        json.dump({"quality": JPEG_QUALITY}, f)
+        json.dump({"quality": quality}, f)
 
 # get extracted frames' quality
 def get_extraction_metadata(output_folder: str) -> dict:
@@ -62,25 +61,25 @@ def frames_already_extracted(output_folder: str) -> bool:
     return any(Path(output_folder).glob("*.jpg"))
 
 # uses FFmpeg to extract video frames, returns num of frames
-def extract_frames(video_path: str, output_folder: str) -> int:
+def extract_frames(video_path: str, output_folder: str, quality:int) -> int:
     Path(output_folder).mkdir(parents=True, exist_ok=True)
     subprocess.run(
         [
             "ffmpeg", "-i", video_path,
-            "-q:v", str(JPEG_QUALITY),
+            "-q:v", str(quality),
             os.path.join(output_folder, "%07d.jpg"),
         ],
         check=True,
         capture_output=True,
     )
-    save_extraction_metadata(output_folder)
+    save_extraction_metadata(output_folder, quality)
     return len(list(Path(output_folder).glob("*.jpg")))
 
 @app.post("/upload-video")
 
 # function that takes in video upload, and breaks it up into individual frames
 # if jpeg quality variable changed, re-extract
-async def upload_video(file: UploadFile = File(...)):
+async def upload_video(file: UploadFile = File(...), quality: int = Form(default=31)):
     video_name = os.path.splitext(file.filename)[0]
     video_path = os.path.join(INPUT_DIR, file.filename)
     output_folder = os.path.join(OUTPUT_DIR, video_name)
@@ -95,7 +94,7 @@ async def upload_video(file: UploadFile = File(...)):
     fps = get_fps(video_path)
 
     already_extracted = frames_already_extracted(output_folder)
-    quality_changed = get_extraction_metadata(output_folder).get("quality") != JPEG_QUALITY
+    quality_changed = get_extraction_metadata(output_folder).get("quality") != quality
 
     if already_extracted and not quality_changed:
         frame_count = len(list(Path(output_folder).glob("*.jpg")))
@@ -103,13 +102,29 @@ async def upload_video(file: UploadFile = File(...)):
         if already_extracted:  # wipe stale frames before re-extracting
             for f in Path(output_folder).glob("*.jpg"):
                 f.unlink()
-        frame_count = extract_frames(video_path, output_folder)
+        frame_count = extract_frames(video_path, output_folder, quality)
 
     return {
         "video_name": video_name,
         "frame_count": frame_count,
         "frame_rate": fps,
     }
+
+# re-extract frame, if quality toggle is changed
+@app.post("/reextract/{video_name}")
+async def reextract_frames(video_name: str, payload: dict = Body(...)):
+    quality = payload["quality"]
+    output_folder = os.path.join(OUTPUT_DIR, video_name)
+
+    # find the source video without needing to store the filename
+    matches = list(Path(INPUT_DIR).glob(f"{video_name}.*"))
+    video_path = str(matches[0])
+
+    for f in Path(output_folder).glob("*.jpg"):
+        f.unlink()
+
+    frame_count = extract_frames(video_path, output_folder, quality)
+    return {"frame_count": frame_count}
 
 # function to get frame
 @app.get("/frame/{video_name}/{frame_idx}")
