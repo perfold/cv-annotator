@@ -113,7 +113,7 @@ function App() {
           setShowSaved(true)
           setTimeout(() => setShowSaved(false), 5000)
         })
-    }, 15000) // every 15 secs
+    }, 5000) // every 5 secs
 
     return () => clearInterval(interval)
   }, [videoName, bboxesByFrame, classes, classColors])
@@ -346,12 +346,16 @@ function App() {
         const ybr = ((box.y + box.height) * scaleY).toFixed(2)
         const nextFrame = parseInt(frameIndex) + 1
 
+        const boxTags = box.tags ?? []
+        const isOccluded = boxTags.includes('occluded') ? 1 : 0
+        const tagAttrs = tags
+          .map(tag => `${tag}="${boxTags.includes(tag) ? 1 : 0}"`)
+          .join(' ')
+
         tracks.push(
           `  <track id="${trackId}" label="${box.className}" source="manual">\n` +
-          `    <box frame="${frameIndex}" keyframe="1" outside="0" occluded="0" xtl="${xtl}" ytl="${ytl}" xbr="${xbr}" ybr="${ybr}" z_order="0">\n` +
-          `    </box>\n` +
-          `    <box frame="${nextFrame}" keyframe="1" outside="1" occluded="0" xtl="${xtl}" ytl="${ytl}" xbr="${xbr}" ybr="${ybr}" z_order="0">\n` +
-          `    </box>\n` +
+          `    <box frame="${frameIndex}" keyframe="1" outside="0" ${tagAttrs} xtl="${xtl}" ytl="${ytl}" xbr="${xbr}" ybr="${ybr}" z_order="0"> </box>\n` +
+          `    <box frame="${nextFrame}" keyframe="1" outside="1" ${tagAttrs} xtl="${xtl}" ytl="${ytl}" xbr="${xbr}" ybr="${ybr}" z_order="0"> </box>\n` +
           `  </track>`
         )
         trackId++
