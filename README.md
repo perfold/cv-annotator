@@ -44,15 +44,21 @@ Open http://localhost:5173/ in your browser, to view the frontend
 ---
 
 ## Keyboard Shortcuts & Controls
-### Video Navigation
 
 | Key | Action |
 |-----|--------|
-| `←` | Go back 1 frame |
-| `→` | Go forward 1 frame |
-| `,` | Go back N frames |
-| `.` | Go forward N frames |
-| `Space` | Play / Pause |
+| W | Toggle select/draw mode |
+| Esc | Cancel bbox drawing |
+| Arrow Left/Right | Previous/next frame |
+| , / . | Jump back/forward by N frames |
+| Space | Play/pause |
+| Delete / Backspace | Delete selected bbox(es) |
+| Ctrl+A | Select all boxes on frame |
+| Ctrl+Z | Undo |
+| Ctrl+Y | Redo |
+| Ctrl+C | Copy selected boxes |
+| Ctrl+V | Paste copied boxes |
+| Ctrl+S | Save |
 
 > N is the frame interval, adjustable in the UI (default: 10)
 
@@ -69,7 +75,7 @@ Open http://localhost:5173/ in your browser, to view the frontend
 
 ### Annotation
 
-`W` — toggle between **Select** and **Draw** mode\
+`W` — toggle between **Select** and **Draw** mode
 
 `Ctrl + S` — manually save annotations
 

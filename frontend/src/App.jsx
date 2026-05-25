@@ -41,6 +41,10 @@ function App() {
   const imageDimsRef = useRef({ origW: 0, origH: 0, dispW: 0, dispH: 0 })
   const [quality, setQuality] = useState('low') // set quality of extracted frames, default low
   const [isExtracting, setIsExtracting] = useState(false) 
+  const pastRef = useRef([])    // undo stack
+  const futureRef = useRef([])  // redo stack
+  const clipboardRef = useRef([])
+  const stateRef = useRef({}) // keeps track of bbox states
 
   // class labels
   const [classes, setClasses] = useState([]) // list of existing classes
@@ -78,6 +82,8 @@ function App() {
     setFps(res.data.frame_rate)
     setCurrentFrame(0)
     setBboxesByFrame({})
+    pastRef.current = []
+    futureRef.current = []
 
     // resume annotations
     const session = await loadSession(res.data.video_name)
@@ -131,50 +137,48 @@ function App() {
   useEffect(() => {
     if (!videoName) return
     function handleKeyDown(e) {
-      if (e.key === "ArrowLeft") prevFrame() // regular 1 frame skip
-      if (e.key === "ArrowRight") nextFrame()
-      if (e.key === ",") setCurrentFrame(f => Math.max(0, f - frameInterval)) // keyframe interval skip
-      if (e.key === ".") setCurrentFrame(f => Math.min(frameCount - 1, f + frameInterval)) // mapped to unshifted < > keys
-      if (e.key === " ") {
-        e.preventDefault() // to prevent spacebar from triggering file explorer directly after video upload
-        setIsPlaying(p => !p)
-      }
-      if ((e.key === "Delete" || e.key === "Backspace") && selectedBboxIds.length > 0) { // delete bbox if selected + hit backspace/del
-        e.preventDefault()
-        deleteBboxes(selectedBboxIds)
-        setSelectedBboxIds([])
-      }
-      if (e.key === 'w' || e.key === 'W') setMode(m => m === 'draw' ? 'select' : 'draw') // toggle between select and draw mode
-      if (e.key === 'a' && e.ctrlKey) { // ctrl+a to select all boxes
-        e.preventDefault()
-        setSelectedBboxIds(frameBboxes.map(b => b.id))
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [videoName, frameCount, frameInterval, selectedBboxIds, frameBboxes])
 
-  // prevent certain shortcuts (ctrl+s) from triggering browser
-  useEffect(() => {
-    const blockBrowserShortcuts = (e) => {
-      if (!e.ctrlKey) return
-      if (!['s', 'z', 'y', 'c', 'v'].includes(e.key)) return
-      e.preventDefault()
-
-      if (e.key === 's') {
-        if (!videoName) return
-        saveSession(videoName, bboxesByFrame, classes, classColors)
+      // ctrl shortcuts
+      if (e.ctrlKey) {
+        if (!['s', 'z', 'y', 'c', 'v', 'a'].includes(e.key)) return
+        e.preventDefault()
+        if (e.key === 's') saveSession(videoName, bboxesByFrame, classes, classColors)
           .then(() => {
             lastSavedRef.current = JSON.stringify(bboxesByFrame)
             setShowSaved(true)
             setTimeout(() => setShowSaved(false), 5000)
           })
+        if (e.key === 'z') undo()
+        if (e.key === 'y') redo()
+        if (e.key === 'c') copyBboxes()
+        if (e.key === 'v') pasteBboxes()
+        if (e.key === 'a') setSelectedBboxIds(frameBboxes.map(b => b.id)) // ctrl+a to select all boxes
+        return
       }
-      // ctrl+z, ctrl+y, ctrl+c, ctrl+v: blocked for now, logic added later
+      
+      // other shortcuts
+      if (e.key === "ArrowLeft") prevFrame() // regular 1 frame skip
+      if (e.key === "ArrowRight") nextFrame()
+      if (e.key === ",") setCurrentFrame(f => Math.max(0, f - frameInterval)) // keyframe interval skip
+      if (e.key === ".") setCurrentFrame(f => Math.min(frameCount - 1, f + frameInterval)) // mapped to unshifted < > keys
+      if (e.key === " ") { e.preventDefault() // to prevent spacebar from triggering file explorer directly after video upload
+        setIsPlaying(p => !p) 
+      }
+      if (e.key === 'w' || e.key === 'W') setMode(m => m === 'draw' ? 'select' : 'draw') // toggle between select and draw mode
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedBboxIds.length > 0) { // delete bbox if selected + hit backspace/del
+        e.preventDefault()
+        deleteBboxes(selectedBboxIds)
+        setSelectedBboxIds([])
+      }
     }
-    window.addEventListener('keydown', blockBrowserShortcuts)
-    return () => window.removeEventListener('keydown', blockBrowserShortcuts)
-  }, [videoName, bboxesByFrame, classes, classColors])
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [videoName, frameCount, frameInterval, selectedBboxIds, frameBboxes, currentFrame, bboxesByFrame, classes, classColors])
+
+  // keep stateRef current 
+  useEffect(() => {
+    stateRef.current = { bboxesByFrame, classes, classColors, tags }
+  }, [bboxesByFrame, classes, classColors, tags])
 
   // video playback
   useEffect(() => {
@@ -198,6 +202,7 @@ function App() {
   function addClass() {
     const trimmed = newClassName.trim()
     if (!trimmed || classes.includes(trimmed)) return
+    pushHistory()
     const color = PALETTE[classes.length % PALETTE.length]
     setClasses(c => [...c, trimmed])
     setClassColors(prev => ({ ...prev, [trimmed]: color }))
@@ -205,6 +210,7 @@ function App() {
   }
 
   function deleteClass(className) {
+    pushHistory()
     setClasses(c => c.filter(c => c !== className))
     setClassColors(prev => {
       const next = { ...prev }
@@ -216,13 +222,15 @@ function App() {
 
   // bbox drawing functions
   function addBbox(bbox) {
+    pushHistory()
     setBboxesByFrame(prev => ({
       ...prev,
       [currentFrame]: [...(prev[currentFrame] ?? []), { tags: [], ...bbox }]
     }))
   }
 
-    function deleteBbox(id) { // used for delete button in context menu + right sidebar
+  function deleteBbox(id) { // used for delete button in context menu + right sidebar
+    pushHistory()  
     setBboxesByFrame(prev => ({
       ...prev,
       [currentFrame]: (prev[currentFrame] ?? []).filter(b => b.id !== id)
@@ -230,6 +238,7 @@ function App() {
   }
 
   function updateBbox(id, newAttrs) { // used for single box drags
+    pushHistory()
     setBboxesByFrame(prev => ({
       ...prev,
       [currentFrame]: (prev[currentFrame] ?? []).map(b =>
@@ -239,6 +248,7 @@ function App() {
   }
 
   function deleteBboxes(ids) { // delete group of bboxes
+    pushHistory()
     const idSet = new Set(ids)
     setBboxesByFrame(prev => ({
       ...prev,
@@ -247,6 +257,7 @@ function App() {
   }
 
   function updateBboxes(updates) { // update group of bboxes
+    pushHistory()
     setBboxesByFrame(prev => ({
       ...prev,
       [currentFrame]: (prev[currentFrame] ?? []).map(b => {
@@ -258,6 +269,7 @@ function App() {
 
   // bbox class changing functions
   function changeClass(id, newClassName) {
+    pushHistory()
     setBboxesByFrame(prev => ({
       ...prev,
       [currentFrame]: (prev[currentFrame] ?? []).map(b =>
@@ -279,38 +291,90 @@ function App() {
 
   // bbox tagging functions
   function addTag() {
-      const trimmed = newTagName.trim()
-      if (!trimmed || tags.includes(trimmed)) return // ignore if 'new' tag already in list
-      setTags(t => [...t, trimmed])
-      setNewTagName('')
-    }
+    const trimmed = newTagName.trim()
+    if (!trimmed || tags.includes(trimmed)) return // ignore if 'new' tag already in list
+    pushHistory()
+    setTags(t => [...t, trimmed])
+    setNewTagName('')
+  }
 
-    function deleteTag(tagName) {
-      setTags(t => t.filter(t => t !== tagName))
-      setBboxesByFrame(prev => { // also remove it from any bbox that has it
-        const next = {}
-        for (const [frame, bboxes] of Object.entries(prev)) {
-          next[frame] = bboxes.map(b => ({
-            ...b,
-            tags: (b.tags ?? []).filter(t => t !== tagName)
-          }))
-        }
-        return next
+  function deleteTag(tagName) {
+    pushHistory()
+    setTags(t => t.filter(t => t !== tagName))
+    setBboxesByFrame(prev => { // also remove it from any bbox that has it
+      const next = {}
+      for (const [frame, bboxes] of Object.entries(prev)) {
+        next[frame] = bboxes.map(b => ({
+          ...b,
+          tags: (b.tags ?? []).filter(t => t !== tagName)
+        }))
+      }
+      return next
+    })
+  }
+
+  function toggleBboxTag(bboxId, tagName) {
+    pushHistory()
+    setBboxesByFrame(prev => ({
+      ...prev,
+      [currentFrame]: (prev[currentFrame] ?? []).map(b => {
+        if (b.id !== bboxId) return b
+        const has = (b.tags ?? []).includes(tagName)
+        return { ...b, tags: has 
+          ? b.tags.filter(t => t !== tagName) // remove tag if bbox already has it
+          : [...(b.tags ?? []), tagName] } // add tag if don't have yet
       })
-    }
+    }))
+  }
 
-    function toggleBboxTag(bboxId, tagName) {
-      setBboxesByFrame(prev => ({
-        ...prev,
-        [currentFrame]: (prev[currentFrame] ?? []).map(b => {
-          if (b.id !== bboxId) return b
-          const has = (b.tags ?? []).includes(tagName)
-          return { ...b, tags: has 
-            ? b.tags.filter(t => t !== tagName) // remove tag if bbox already has it
-            : [...(b.tags ?? []), tagName] } // add tag if don't have yet
-        })
-      }))
-    }
+  // undo, redo, copy, paste logic
+  function pushHistory() {
+    pastRef.current.push(JSON.parse(JSON.stringify(stateRef.current)))
+    if (pastRef.current.length > 50) pastRef.current.shift()  // cap at 50
+    futureRef.current = []  // clear redo stack on new action
+  }
+
+  function undo() {
+    if (pastRef.current.length === 0) return
+    futureRef.current.unshift(JSON.parse(JSON.stringify(stateRef.current)))
+    const snap = pastRef.current.pop()
+    setBboxesByFrame(snap.bboxesByFrame)
+    setClasses(snap.classes)
+    setClassColors(snap.classColors)
+    setTags(snap.tags)
+  }
+
+  function redo() {
+    if (futureRef.current.length === 0) return
+    pastRef.current.push(JSON.parse(JSON.stringify(stateRef.current)))
+    const snap = futureRef.current.shift()
+    setBboxesByFrame(snap.bboxesByFrame)
+    setClasses(snap.classes)
+    setClassColors(snap.classColors)
+    setTags(snap.tags)
+  }
+
+  function copyBboxes() {
+    const selected = frameBboxes.filter(b => selectedBboxIds.includes(b.id))
+    if (selected.length === 0) return
+    clipboardRef.current = selected
+  }
+
+  function pasteBboxes() {
+    if (clipboardRef.current.length === 0) return
+    pushHistory()
+    const newBboxes = clipboardRef.current.map(b => ({
+      ...b,
+      id: crypto.randomUUID(),
+      x: b.x + 10,
+      y: b.y + 10,
+    }))
+    setBboxesByFrame(prev => ({
+      ...prev,
+      [currentFrame]: [...(prev[currentFrame] ?? []), ...newBboxes]
+    }))
+    setSelectedBboxIds(newBboxes.map(b => b.id))
+  }
 
   // import CVAT .xml file 
   function importXML(file) {
@@ -378,6 +442,8 @@ function App() {
       setClassColors(mergedColors)
       setTags([...importedTags])
       setBboxesByFrame(importedBboxesByFrame)
+      pastRef.current = []
+      futureRef.current = []
     }
     reader.readAsText(file)
   }  

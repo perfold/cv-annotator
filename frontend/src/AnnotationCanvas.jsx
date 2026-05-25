@@ -30,6 +30,18 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
     return () => observer.disconnect()
   }, [])
 
+  // cancel bbox drawing using Esc
+  useEffect(() => {
+    const handleEsc = (e) => {
+      if (e.key === 'Escape') {
+        setDrawStart(null)
+        setDrawCurrent(null)
+      }
+    }
+    window.addEventListener('keydown', handleEsc)
+    return () => window.removeEventListener('keydown', handleEsc)
+  }, [])
+
   const [image, status] = useImage(frameUrl, 'anonymous')
 
   // keep the previous frame visible while the next one loads, prevent 'flickering' effect
