@@ -312,7 +312,77 @@ function App() {
       }))
     }
 
-    // export final annotation functions
+  // import CVAT .xml file 
+  function importXML(file) {
+    if (!videoName) return
+    const { dispW, dispH } = imageDimsRef.current
+    if (!dispW || !dispH) { alert('Load the video first before importing.'); return }
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const parser = new DOMParser()
+      const xml = parser.parseFromString(e.target.result, 'application/xml')
+
+      const xmlOrigW = parseFloat(xml.querySelector('original_size > width')?.textContent)
+      const xmlOrigH = parseFloat(xml.querySelector('original_size > height')?.textContent)
+      if (!xmlOrigW || !xmlOrigH) { alert('Could not read original_size from XML.'); return }
+
+      // scale from original image space to current display space
+      const scaleX = dispW / xmlOrigW
+      const scaleY = dispH / xmlOrigH
+
+      const STANDARD_ATTRS = new Set(['frame', 'keyframe', 'outside', 'xtl', 'ytl', 'xbr', 'ybr', 'z_order'])
+      const importedBboxesByFrame = {}
+      const importedClasses = []
+      const importedTags = new Set(tags)
+
+      xml.querySelectorAll('track').forEach(track => {
+        const className = track.getAttribute('label')
+        if (!importedClasses.includes(className)) importedClasses.push(className)
+
+        track.querySelectorAll('box').forEach(box => {
+          if (box.getAttribute('outside') === '1') return
+
+          const frame = parseInt(box.getAttribute('frame'))
+          const xtl = parseFloat(box.getAttribute('xtl'))
+          const ytl = parseFloat(box.getAttribute('ytl'))
+          const xbr = parseFloat(box.getAttribute('xbr'))
+          const ybr = parseFloat(box.getAttribute('ybr'))
+
+          const x = xtl * scaleX
+          const y = ytl * scaleY
+          const width = (xbr - xtl) * scaleX
+          const height = (ybr - ytl) * scaleY
+
+          const boxTags = []
+          Array.from(box.attributes).forEach(attr => {
+            if (STANDARD_ATTRS.has(attr.name)) return
+            if (attr.value === '1') { boxTags.push(attr.name); importedTags.add(attr.name) }
+          })
+
+          if (!importedBboxesByFrame[frame]) importedBboxesByFrame[frame] = []
+          importedBboxesByFrame[frame].push({ id: crypto.randomUUID(), className, x, y, width, height, tags: boxTags })
+        })
+      })
+
+      const mergedColors = { ...classColors }
+      const mergedClasses = [...classes]
+      importedClasses.forEach(cls => {
+        if (!mergedClasses.includes(cls)) {
+          mergedClasses.push(cls)
+          mergedColors[cls] = PALETTE[mergedClasses.length % PALETTE.length]
+        }
+      })
+
+      setClasses(mergedClasses)
+      setClassColors(mergedColors)
+      setTags([...importedTags])
+      setBboxesByFrame(importedBboxesByFrame)
+    }
+    reader.readAsText(file)
+  }  
+
+  // export final annotation functions
   function exportCVATXML() {
     const { origW, origH, dispW, dispH } = imageDimsRef.current
     const scaleX = origW / dispW
@@ -347,7 +417,6 @@ function App() {
         const nextFrame = parseInt(frameIndex) + 1
 
         const boxTags = box.tags ?? []
-        const isOccluded = boxTags.includes('occluded') ? 1 : 0
         const tagAttrs = tags
           .map(tag => `${tag}="${boxTags.includes(tag) ? 1 : 0}"`)
           .join(' ')
@@ -514,8 +583,33 @@ return (
             onChange={(e) => uploadVideo(e.target.files[0])}
           />
           <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'stretch', gap: 4 }}>
+            {/* import .xml file */}
+            <input
+              type="file"
+              accept=".xml"
+              id="import-xml-input"
+              style={{ display: 'none' }}
+              onChange={(e) => { if (e.target.files[0]) importXML(e.target.files[0]) }}
+            />
+            <button style={{ width: '50%' }}
+              tabIndex={-1}
+              disabled={!videoName}
+              onClick={() => document.getElementById('import-xml-input').click()}
+            >
+              Import XML
+            </button>
+            {/* export as .xml button */}
+            <button style ={{ width: '50%' }}
+              tabIndex={-1}
+              disabled={!videoName}
+              onClick={exportCVATXML}
+            >
+              Export XML
+            </button>
+          </div>
+          <div style={{display:'flex', justifyContent:'flex-start'}}>
             {/* save button */}
-            <button
+            <button style={{width: '100%'}}
               tabIndex={-1}
               disabled={!videoName}
               onClick={() => saveSession(videoName, bboxesByFrame, classes, classColors)
@@ -527,14 +621,6 @@ return (
               }
             >
               Save
-            </button>
-            {/* export as .xml button */}
-            <button
-              tabIndex={-1}
-              disabled={!videoName}
-              onClick={exportCVATXML}
-            >
-              Export XML
             </button>
           </div>
         </div>

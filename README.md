@@ -69,7 +69,8 @@ Open http://localhost:5173/ in your browser, to view the frontend
 
 ### Annotation
 
-`W` — toggle between **Select** and **Draw** mode
+`W` — toggle between **Select** and **Draw** mode\
+
 `Ctrl + S` — manually save annotations
 
 ### Draw Mode
@@ -87,7 +88,7 @@ Open http://localhost:5173/ in your browser, to view the frontend
 | Ctrl + A | Select all bboxes on current frame |
 | Left click + drag (bbox) | Move selected bbox(es) |
 | Backspace / Delete | Delete selected bbox(es) |
-| Right click | Open context menu (change class, add tags, delete)/
+| Right click | Open context menu (change class, add tags, delete) |
 
 ---
 
