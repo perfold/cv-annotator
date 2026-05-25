@@ -36,6 +36,7 @@ function App() {
   const [mode, setMode] = useState('select') // toggle between select and draw mode 
   const [showSaved, setShowSaved] = useState(false)
   const lastSavedRef = useRef(null)
+  const imageDimsRef = useRef({ origW: 0, origH: 0, dispW: 0, dispH: 0 })
 
   // class labels
   const [classes, setClasses] = useState([]) // list of existing classes
@@ -296,6 +297,102 @@ function App() {
       }))
     }
 
+    // export final annotation functions
+  function exportCVATXML() {
+    const { origW, origH, dispW, dispH } = imageDimsRef.current
+    const scaleX = origW / dispW
+    const scaleY = origH / dispH
+
+    // CVAT timestamp format: "2026-05-22 02:31:39.107577+00:00"
+    const formatDate = (date) =>
+      date.toISOString()
+        .replace('T', ' ')
+        .replace(/(\.\d{3})Z$/, '$1000+00:00')
+
+    const now = formatDate(new Date())
+
+    const labelsXml = classes.map(cls => `
+        <label>
+          <name>${cls}</name>
+          <color>${classColors[cls] ?? '#ffffff'}</color>
+          <type>any</type>
+          <attributes>
+          </attributes>
+        </label>`).join('')
+
+    let trackId = 0
+    const tracks = []
+
+    for (const [frameIndex, boxes] of Object.entries(bboxesByFrame)) {
+      for (const box of boxes) {
+        const xtl = (box.x * scaleX).toFixed(2)
+        const ytl = (box.y * scaleY).toFixed(2)
+        const xbr = ((box.x + box.width) * scaleX).toFixed(2)
+        const ybr = ((box.y + box.height) * scaleY).toFixed(2)
+        const nextFrame = parseInt(frameIndex) + 1
+
+        tracks.push(
+          `  <track id="${trackId}" label="${box.className}" source="manual">\n` +
+          `    <box frame="${frameIndex}" keyframe="1" outside="0" occluded="0" xtl="${xtl}" ytl="${ytl}" xbr="${xbr}" ybr="${ybr}" z_order="0">\n` +
+          `    </box>\n` +
+          `    <box frame="${nextFrame}" keyframe="1" outside="1" occluded="0" xtl="${xtl}" ytl="${ytl}" xbr="${xbr}" ybr="${ybr}" z_order="0">\n` +
+          `    </box>\n` +
+          `  </track>`
+        )
+        trackId++
+      }
+    }
+
+    const xml = `<?xml version="1.0" encoding="utf-8"?>
+  <annotations>
+    <version>1.1</version>
+    <meta>
+      <job>
+        <id>1</id>
+        <size>${frameCount}</size>
+        <mode>interpolation</mode>
+        <overlap>0</overlap>
+        <bugtracker></bugtracker>
+        <created>${now}</created>
+        <updated>${now}</updated>
+        <subset>default</subset>
+        <start_frame>0</start_frame>
+        <stop_frame>${frameCount - 1}</stop_frame>
+        <frame_filter></frame_filter>
+        <segments>
+          <segment>
+            <id>1</id>
+            <start>0</start>
+            <stop>${frameCount - 1}</stop>
+            <url></url>
+          </segment>
+        </segments>
+        <owner>
+          <username></username>
+          <email></email>
+        </owner>
+        <assignee></assignee>
+        <labels>${labelsXml}
+        </labels>
+      </job>
+      <dumped>${now}</dumped>
+      <original_size>
+        <width>${origW}</width>
+        <height>${origH}</height>
+      </original_size>
+    </meta>
+  ${tracks.join('\n')}
+  </annotations>`
+
+    const blob = new Blob([xml], { type: 'application/xml' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${videoName}_annotations.xml`
+    a.click()
+    URL.revokeObjectURL(url)
+  }    
+  
 // UI block
 return (
   <div style={{ display: "flex", height: "100vh", textAlign: "center" }}>
@@ -389,27 +486,38 @@ return (
     {/* center area */}
 
     <div style={{ flex: 1, padding: "8px", display: "flex", flexDirection: "column", alignItems: "stretch", textAlign: 'center' }}>      
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        {/* video input button */}
+          {/* video input button */}
           <input
             type="file"
             accept="video/*"
             onChange={(e) => uploadVideo(e.target.files[0])}
           />
-          <button
-            tabIndex={-1}
-            disabled={!videoName}
-            onClick={() => saveSession(videoName, bboxesByFrame, classes, classColors)
-              .then(() => {
-                lastSavedRef.current = JSON.stringify(bboxesByFrame)
-                setShowSaved(true)
-                setTimeout(() => setShowSaved(false), 5000)
-              })
-            }
-          >
-            Save
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'stretch', gap: 4 }}>
+            {/* save button */}
+            <button
+              tabIndex={-1}
+              disabled={!videoName}
+              onClick={() => saveSession(videoName, bboxesByFrame, classes, classColors)
+                .then(() => {
+                  lastSavedRef.current = JSON.stringify(bboxesByFrame)
+                  setShowSaved(true)
+                  setTimeout(() => setShowSaved(false), 5000)
+                })
+              }
+            >
+              Save
+            </button>
+            {/* export as .xml button */}
+            <button
+              tabIndex={-1}
+              disabled={!videoName}
+              onClick={exportCVATXML}
+            >
+              Export XML
+            </button>
+          </div>
         </div>
         {/* saved indicator */}
         <span style={{
@@ -465,6 +573,7 @@ return (
             openContextMenu={openContextMenu}
             mode={mode}
             updateBboxes={updateBboxes}
+            onDimsReady={(dims) => { imageDimsRef.current = dims}}
           /> {/* calls fastAPI for image */}
           <div>
             {/* playback navigation */}

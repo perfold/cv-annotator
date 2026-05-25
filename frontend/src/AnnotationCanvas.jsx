@@ -2,7 +2,7 @@ import { Stage, Layer, Image as KonvaImage, Rect, Text, Group, Label, Tag } from
 import useImage from 'use-image'
 import { useState, useRef, useEffect } from 'react'
 
-function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, addBbox, selectedBboxIds, setSelectedBboxIds, openContextMenu, mode, updateBboxes}) {
+function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, addBbox, selectedBboxIds, setSelectedBboxIds, openContextMenu, mode, updateBboxes, onDimsReady}) {
     
   // refs and states
   const containerRef = useRef()
@@ -48,6 +48,16 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
     stageHeight = MAX_STAGE_HEIGHT
     stageWidth = displayImage.naturalWidth * scale
   }
+
+  useEffect(() => {
+    if (!displayImage) return
+    onDimsReady?.({
+      origW: displayImage.naturalWidth,
+      origH: displayImage.naturalHeight,
+      dispW: stageWidth,
+      dispH: stageHeight,
+    })
+  }, [displayImage, stageWidth, stageHeight])
 
   // drawing state
   const [drawStart, setDrawStart]   = useState(null) // top left corner of bbox
