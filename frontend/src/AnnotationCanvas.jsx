@@ -1,4 +1,4 @@
-import { Stage, Layer, Image as KonvaImage, Rect, Text, Group, Label, Tag } from 'react-konva'
+import { Stage, Layer, Image as KonvaImage, Rect, Text, Group, Label, Tag, Transformer } from 'react-konva'
 import useImage from 'use-image'
 import { useState, useRef, useEffect } from 'react'
 
@@ -18,6 +18,8 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
   const panStartRef = useRef({ x: 0, y: 0 }) // handle panning around stage
   const stageStartPosRef = useRef({ x: 0, y: 0 })
   const justPannedRef = useRef(false) // prevent ctrl drag from drawing bbox
+  const [resizingId, setResizingId] = useState(null) // to manage resizing of bboxes
+  const transformerRef = useRef()
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -71,6 +73,17 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
     })
   }, [displayImage, stageWidth, stageHeight])
 
+  // resize bbox 
+  useEffect(() => {
+    if (!transformerRef.current) return
+    if (!resizingId) { transformerRef.current.nodes([]); return }
+    const node = nodeRefs.current[resizingId]
+    if (node) {
+      transformerRef.current.nodes([node])
+      transformerRef.current.getLayer().batchDraw()
+    }
+  }, [resizingId])
+
   // drawing state
   const [drawStart, setDrawStart]   = useState(null) // top left corner of bbox
   const [drawCurrent, setDrawCurrent] = useState(null) // continuously updated as bbox size changes
@@ -102,6 +115,7 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
     a.y + a.height < rb.y || a.y > rb.y + rb.height)
 
   const handleClick = (e) => {
+    setResizingId(null) // for resizing of bboxes
     if (justPannedRef.current) { justPannedRef.current = false; return } // if just pan, don't draw bbox
     if (e.evt.button === 2) {setSelectedBboxIds([]); return}  // ensure right click doesnt trigger new bbox, only used to open context menu
     if (rubberBandFiredRef.current) { rubberBandFiredRef.current = false; return } // prevent click after rubberband
@@ -192,6 +206,7 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
 
   const handleDblClick = (e) => {
     if (mode === 'select') { 
+      setResizingId(null)
       setStageScale(1) // zooms back to original scale if you double click
       setStagePos({ x: 0, y: 0 })
       return
@@ -276,7 +291,7 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
                 x={b.x} y={b.y}
                 ref={el => { if (el) nodeRefs.current[b.id] = el; else delete nodeRefs.current[b.id] }}
                 // bbox dragging functions
-                draggable={mode === 'select'}
+                draggable={mode === 'select' && resizingId !== b.id}
                 listening={mode === 'select'}
                 onMouseDown={(e) => {
                   if (e.evt.ctrlKey) return  
@@ -344,6 +359,11 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
                 onMouseLeave={(e) => {
                   e.target.getStage().container().style.cursor = mode === 'draw' ? 'crosshair' : 'default'
                 }}
+                onDblClick={(e) => {
+                  if (mode !== 'select') return
+                  e.cancelBubble = true
+                  setResizingId(b.id)
+                }}
               >
                 {/* bbox settings */}
                 <Rect
@@ -368,6 +388,37 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
             )
           })}
 
+          <Transformer
+            ref={transformerRef}
+            rotateEnabled={false}
+            keepRatio={false}
+            onTransformEnd={() => {
+              if (!resizingId) return
+              const node = nodeRefs.current[resizingId]
+              if (!node) return
+              const bbox = frameBboxes.find(b => b.id === resizingId)
+              if (!bbox) return
+
+              const scaleX = node.scaleX()
+              const scaleY = node.scaleY()
+              node.scaleX(1)  // reset scale, apply to width/height instead
+              node.scaleY(1)
+
+              updateBboxes([{
+                id: resizingId,
+                x: node.x(),
+                y: node.y(),
+                width: Math.max(5, bbox.width * scaleX),
+                height: Math.max(5, bbox.height * scaleY),
+              }])
+            }}
+            boundBoxFunc={(oldBox, newBox) => {
+              if (newBox.width < 5 || newBox.height < 5) return oldBox  // prevent resize too small
+              return newBox
+            }}
+          />
+
+          {/* preview rect */}
           {preview && (
             <Rect
               x={preview.x} y={preview.y}
