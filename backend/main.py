@@ -3,8 +3,36 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import os
 import json
-from pathlib import Path
 import subprocess
+import sys
+from pathlib import Path
+
+BASE_DIR     = Path(__file__).parent.parent
+DATA_DIR     = BASE_DIR / "data"
+INPUT_DIR    = DATA_DIR / "input"
+OUTPUT_DIR   = DATA_DIR / "output"
+MODELS_DIR   = BASE_DIR / "models"
+YOLOV7_PATH  = MODELS_DIR / "yolov7"
+YOLO_WEIGHTS = MODELS_DIR / "yolov7-tiny.pt"
+
+# check if repo and model are in the right dir
+if not YOLOV7_PATH.exists():
+    raise RuntimeError(f"YOLOv7 repo not found at {YOLOV7_PATH}.")
+if not YOLO_WEIGHTS.exists():
+    raise RuntimeError(f"YOLOv7-tiny weights not found at {YOLO_WEIGHTS}.")
+
+sys.path.insert(0, str(YOLOV7_PATH))
+
+import torch
+from utils.datasets import LoadImages
+from utils.general import non_max_suppression, scale_coords
+
+# load yolov7-tiny
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+ckpt  = torch.load(str(YOLO_WEIGHTS), map_location=device, weights_only=False)
+model = ckpt['model'].float().fuse().eval()
+names  = model.module.names if hasattr(model, "module") else model.names
+stride = int(model.stride.max())
 
 app = FastAPI()
 
@@ -15,9 +43,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DATA_DIR = "../data"
-INPUT_DIR = os.path.join(DATA_DIR, "input")
-OUTPUT_DIR = os.path.join(DATA_DIR, "output")
 
 EXTRACTION_METADATA_FILE = "extraction_metadata.json" # stores jpeg_quality variable
 
@@ -99,7 +124,7 @@ async def upload_video(file: UploadFile = File(...), quality: int = Form(default
     if already_extracted and not quality_changed:
         frame_count = len(list(Path(output_folder).glob("*.jpg")))
     else:
-        if already_extracted:  # wipe stale frames before re-extracting
+        if already_extracted: # wipe stale frames before re-extracting
             for f in Path(output_folder).glob("*.jpg"):
                 f.unlink()
         frame_count = extract_frames(video_path, output_folder, quality)
@@ -149,3 +174,45 @@ async def load_annotations(video_name: str):
         return {}
     with open(path) as f:
         return json.load(f)
+
+# run yolo on all frames
+@app.post("/run-yolo/{video_name}")
+async def run_yolo(video_name: str, payload: dict = Body(...)):
+    conf_thres   = payload.get("conf", 0.25)
+    frames_dir   = OUTPUT_DIR / video_name
+
+    dataset    = LoadImages(frames_dir, img_size=640, stride=stride)
+    detections = {}
+
+    for path, img, im0, _ in dataset:
+        frame_idx = int(Path(path).stem) - 1
+
+        img = torch.from_numpy(img).to(device).float() / 255.0
+        if img.ndimension() == 3:
+            img = img.unsqueeze(0)
+
+        with torch.no_grad():
+            pred = model(img)[0]
+
+        pred = non_max_suppression(pred, conf_thres, iou_thres=0.45)
+
+        dets = []
+        for det in pred:
+            if det is None or not len(det):
+                continue
+            det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
+            for *xyxy, conf, cls in det:
+                dets.append({
+                    "class_name": names[int(cls)],
+                    "xtl": round(float(xyxy[0]), 2),
+                    "ytl": round(float(xyxy[1]), 2),
+                    "xbr": round(float(xyxy[2]), 2),
+                    "ybr": round(float(xyxy[3]), 2),
+                    "confidence": round(float(conf), 4),
+                })
+
+        if dets:
+            detections[frame_idx] = dets
+
+    detected_classes = list({d["class_name"] for dets in detections.values() for d in dets})
+    return {"detections": detections, "classes": detected_classes}

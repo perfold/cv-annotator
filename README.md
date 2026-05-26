@@ -14,8 +14,10 @@ annotation-tool/
 ├── backend/           FastAPI + Uvicorn
 │   ├── main.py
 │   └── requirements.txt
-├── models/            YOLOv7 tiny, SAM weights (gitignored)
-├── data/              (gitignored)
+├── models/            
+│   ├── yolov7/        Trimmed YOLOv7 repo
+│   └── yolov7-tiny.pt YOLOv7-tiny weights (not committed, see setup)
+├── data/              
 │   ├── input/         uploaded videos
 │   └── output/        extracted frames + annotations per video
 │       └── video_name/
@@ -28,7 +30,20 @@ annotation-tool/
 
 ---
 
-## How to Run
+## Setup
+
+### 1. Model Setup (one-time)
+
+The YOLOv7-tiny weights are not included in the repo as they are too large. Download them and place in the `models/` folder:
+
+```
+wget https://github.com/WongKinYiu/yolov7/releases/download/v0.1/yolov7-tiny.pt -O models/yolov7-tiny.pt
+```
+
+The models/yolov7 folder (trimmed) is already included in this repo.
+
+### 2. Install Dependencies & Run
+
 ```
 cd frontend
 npm install       
@@ -38,8 +53,21 @@ cd backend
 pip install -r requirements.txt
 uvicorn main:app --reload # to run FastAPI backend
 
-Open http://localhost:5173/ in your browser, to view the frontend
+Open http://localhost:5173/ in your browser.
 ```
+
+---
+
+## YOLOv7-tiny Inference
+
+With a video loaded, look at the **Models** panel in the left sidebar:
+
+1. Adjust the **Conf** slider to set the confidence threshold (lower = more detections, higher = fewer but more accurate)
+2. Click **Run YOLOv7-tiny** to run inference across all frames
+3. Detected bboxes will be pre-populated across all frames automatically
+4. Re-run at any time with a different confidence level to update detections (manually drawn annotations are preserved. only YOLO-generated boxes are replaced on re-runs)
+
+Inference runs on GPU if available, CPU otherwise
 
 ---
 
@@ -116,7 +144,7 @@ Open http://localhost:5173/ in your browser, to view the frontend
 - [x] Group shift all bboxes in a single frame at once 
  
 ### Advanced Features
-- [ ] Upload and run YOLOv7-tiny (https://github.com/WongKinYiu/yolov7) object detection model – to prepopulate the data with bboxes (and class labels) on demand. 
+- [x] Upload and run YOLOv7-tiny (https://github.com/WongKinYiu/yolov7) object detection model – to prepopulate the data with bboxes (and class labels) on demand. 
 - [ ] Select a manually drawn bbox, then find all similar instances of it in the subsequent frames and populate the bbox via template-matching or similar algorithms. 
 - [ ] Select an existing bbox, mark it as a FA, then auto remove all similar instances in subsequent frames via template-matching or similar algorithms. 
 - [ ] Outlier detection algorithm based on annotated classes to identify which annotations for that class could be wrong. 

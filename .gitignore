@@ -8,7 +8,8 @@ node_modules/
 
 # Data and models
 data/
-models/
+*.pt
+*.pth
 
 # Environment variables
 .env

@@ -27,7 +27,7 @@ async function loadSession(videoName) {
 
 function App() {
   
-  // create variables and setters
+  // video states
   const [videoName, setVideoName] = useState(null)
   const [frameCount, setFrameCount] = useState(null)
   const [currentFrame, setCurrentFrame] = useState(0)
@@ -35,16 +35,16 @@ function App() {
   const [isPlaying, setIsPlaying] = useState(false)
   const intervalRef = useRef(null)
   const [frameInterval, setFrameInterval] = useState(10) // user definable keyframe interval, 10 is default
+
+  // select/draw mode 
   const [mode, setMode] = useState('select') // toggle between select and draw mode 
   const [showSaved, setShowSaved] = useState(false)
   const lastSavedRef = useRef(null)
-  const imageDimsRef = useRef({ origW: 0, origH: 0, dispW: 0, dispH: 0 })
+  const imageDimsRef = useRef({ origW: 0, origH: 0, dispW: 0, dispH: 0 }) // export .xml 
+
+  // switch quality toggle 
   const [quality, setQuality] = useState('low') // set quality of extracted frames, default low
   const [isExtracting, setIsExtracting] = useState(false) 
-  const pastRef = useRef([])    // undo stack
-  const futureRef = useRef([])  // redo stack
-  const clipboardRef = useRef([])
-  const stateRef = useRef({}) // keeps track of bbox states
 
   // class labels
   const [classes, setClasses] = useState([]) // list of existing classes
@@ -61,6 +61,16 @@ function App() {
   // bbox tags
   const [tags, setTags] = useState(DEFAULT_TAGS) 
   const [newTagName, setNewTagName] = useState('') // used to add custom tags for the bboxes
+
+  // shortcut (ctrl z,y,c,v) states
+  const pastRef = useRef([]) // undo stack
+  const futureRef = useRef([]) // redo stack
+  const clipboardRef = useRef([])
+  const stateRef = useRef({}) // keeps track of bbox states
+
+  // model states
+  const [yoloConf, setYoloConf] = useState(0.25) // confidence level, default is 0.25
+  const [isRunningYolo, setIsRunningYolo] = useState(false)
 
   // format time into HH:MM:SS
   function formatTime(seconds) {
@@ -94,6 +104,75 @@ function App() {
         setClasses(session.classes)
         setClassColors(session.classColors ?? {})
       }
+    }
+  }
+
+  // run yolo on all frames
+  async function runYolo() {
+    if (!videoName) return
+    const { origW, origH, dispW, dispH } = imageDimsRef.current
+    if (!dispW || !dispH) { alert('Load a video first.'); return }
+
+    setIsRunningYolo(true)
+    pushHistory()
+
+    try {
+      const res = await axios.post(
+        `http://localhost:8000/run-yolo/${videoName}`,
+        { conf: yoloConf },
+        { timeout: 0 }  // no timeout, bc inference can take a while
+      )
+      const { detections } = res.data
+      const scaleX = dispW / origW
+      const scaleY = dispH / origH
+
+      // merge new classes + assign colours
+      const newClasses = [...classes]
+      const newColors  = { ...classColors }
+      Object.values(detections).flat().forEach(d => {
+        if (!newClasses.includes(d.class_name)) {
+          newClasses.push(d.class_name)
+          newColors[d.class_name] = PALETTE[newClasses.length % PALETTE.length]
+        }
+      })
+
+      // merge detected bboxes into existing annotations (non-destructive)
+      setBboxesByFrame(prev => {
+        const next = {}
+
+        for (const [frameIdx, bboxes] of Object.entries(prev)) {
+          const manual = bboxes.filter(b => b.confidence === undefined)
+          if (manual.length > 0) next[frameIdx] = manual
+        }
+
+        for (const [frameIdxStr, dets] of Object.entries(detections)) {
+          const frameIdx = parseInt(frameIdxStr)
+          const newBboxes = dets.map(d => ({
+            id:         crypto.randomUUID(),
+            className:  d.class_name,
+            x:          d.xtl * scaleX,
+            y:          d.ytl * scaleY,
+            width:      (d.xbr - d.xtl) * scaleX,
+            height:     (d.ybr - d.ytl) * scaleY,
+            confidence: d.confidence,
+            tags:       [],
+          }))
+          next[frameIdx] = [...(next[frameIdx] ?? []), ...newBboxes]
+          // keeps manually added bboxes (with no conf level), and replaces yolo inferred ones
+        }
+        return next
+      })
+
+      setClasses(newClasses)
+      setClassColors(newColors)
+
+      const total = Object.values(detections).reduce((s, d) => s + d.length, 0)
+      alert(`Done: ${total} detections across ${Object.keys(detections).length} frames.`)
+    } catch (err) {
+      console.error(err)
+      alert('YOLO inference failed. Check the console.')
+    } finally {
+      setIsRunningYolo(false)
     }
   }
 
@@ -234,16 +313,6 @@ function App() {
     setBboxesByFrame(prev => ({
       ...prev,
       [currentFrame]: (prev[currentFrame] ?? []).filter(b => b.id !== id)
-    }))
-  }
-
-  function updateBbox(id, newAttrs) { // used for single box drags
-    pushHistory()
-    setBboxesByFrame(prev => ({
-      ...prev,
-      [currentFrame]: (prev[currentFrame] ?? []).map(b =>
-        b.id === id ? { ...b, ...newAttrs } : b
-      )
     }))
   }
 
@@ -634,6 +703,37 @@ return (
               )
             })}
           </ul>
+          {/* model selection */}
+          <div style={{ borderTop: '1px solid #ccc', marginTop: 8, paddingTop: 8 }}>
+            <h3>Models</h3>
+            {/* confidence level slider */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+              <label style={{ fontSize: 11 }}>Conf: {yoloConf}</label>
+              <input
+                type="range" min={0.05} max={0.95} step={0.05}
+                value={yoloConf}
+                onChange={(e) => setYoloConf(parseFloat(e.target.value))}
+                style={{ flex: 1, accentColor: '#750000' }}
+              />
+            </div>
+            {/* run yolo button */}
+            <button
+              style={{ width: '100%' }}
+              tabIndex={-1}
+              disabled={!videoName || isRunningYolo || isExtracting}
+              onClick={runYolo}
+            >
+              {isRunningYolo ? 'Running…' : 'Run YOLOv7-tiny'}
+            </button>
+            {/* run SAM button */}
+            <button
+              style={{ width: '100%', marginTop: 4, opacity: 0.4 }}
+              tabIndex={-1}
+              disabled
+            >
+              SAM (coming soon)
+            </button>
+          </div>
       </div>
     </div>
 
