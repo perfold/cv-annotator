@@ -378,7 +378,11 @@ function AnnotationCanvas({ frameUrl, activeClass, classColors, frameBboxes, add
                 <Label x={0} y={-20}> 
                   <Tag fill='white' />
                   <Text
-                    text={`${b.className}: ${b.id.slice(0, 6)}`}
+                    text={
+                      b.trackId !== null && b.trackId !== undefined
+                        ? `${b.className}: #${b.trackId}`
+                        : `${b.className}: ${b.id.slice(0, 6)}`
+                    }
                     fontSize={10}
                     fill='#000000'
                     padding={3}

@@ -4,3 +4,10 @@ python-multipart
 opencv-python
 torch
 torchvision
+tqdm
+pandas
+pyyaml
+requests
+matplotlib
+seaborn
+scipy

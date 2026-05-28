@@ -6,6 +6,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from bytetrack import ByteTracker
 
 BASE_DIR     = Path(__file__).parent.parent
 DATA_DIR     = BASE_DIR / "data"
@@ -176,43 +177,68 @@ async def load_annotations(video_name: str):
         return json.load(f)
 
 # run yolo on all frames
+YOLO_CACHE_FILE = "yolo_raw_cache.json"   # stores all dets at conf=0.01
+
 @app.post("/run-yolo/{video_name}")
 async def run_yolo(video_name: str, payload: dict = Body(...)):
-    conf_thres   = payload.get("conf", 0.25)
-    frames_dir   = OUTPUT_DIR / video_name
+    conf_thres = payload.get("conf", 0.25)
+    frames_dir = OUTPUT_DIR / video_name
+    cache_path = frames_dir / YOLO_CACHE_FILE
+    match_thresh = payload.get("match_thresh", 0.5)
+    max_lost     = payload.get("max_lost", 60)
 
-    dataset    = LoadImages(frames_dir, img_size=640, stride=stride)
+    # if no cache yet, run yolo at conf=0.01
+    if not cache_path.exists():
+        dataset    = LoadImages(str(frames_dir), img_size=640, stride=stride)
+        raw_cache  = {}   # frame_idx -> list of dets at conf=0.01
+
+        for path, img, im0, _ in dataset:
+            frame_idx = int(Path(path).stem) - 1
+            img = torch.from_numpy(img).to(device).float() / 255.0
+            if img.ndimension() == 3:
+                img = img.unsqueeze(0)
+
+            with torch.no_grad():
+                pred = model(img)[0]
+
+            # use a very low base threshold so we cache everything
+            pred = non_max_suppression(pred, conf_thres=0.01, iou_thres=0.45)
+
+            frame_dets = []
+            for det in pred:
+                if det is None or not len(det):
+                    continue
+                det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
+                for *xyxy, conf, cls in det:
+                    frame_dets.append({
+                        "class_name": names[int(cls)],
+                        "xtl":        round(float(xyxy[0]), 2),
+                        "ytl":        round(float(xyxy[1]), 2),
+                        "xbr":        round(float(xyxy[2]), 2),
+                        "ybr":        round(float(xyxy[3]), 2),
+                        "confidence": round(float(conf), 4),
+                    })
+
+            if frame_dets:
+                raw_cache[frame_idx] = frame_dets
+
+        with open(cache_path, "w") as f:
+            json.dump(raw_cache, f)
+    else:
+        with open(cache_path) as f:
+            raw_cache = {int(k): v for k, v in json.load(f).items()}
+
+    # filter out dets according to conf level set by user, then run bytetrack
+    tracker    = ByteTracker(track_thresh=conf_thres, match_thresh=match_thresh, max_lost=max_lost)
     detections = {}
 
-    for path, img, im0, _ in dataset:
-        frame_idx = int(Path(path).stem) - 1
-
-        img = torch.from_numpy(img).to(device).float() / 255.0
-        if img.ndimension() == 3:
-            img = img.unsqueeze(0)
-
-        with torch.no_grad():
-            pred = model(img)[0]
-
-        pred = non_max_suppression(pred, conf_thres, iou_thres=0.45)
-
-        dets = []
-        for det in pred:
-            if det is None or not len(det):
-                continue
-            det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
-            for *xyxy, conf, cls in det:
-                dets.append({
-                    "class_name": names[int(cls)],
-                    "xtl": round(float(xyxy[0]), 2),
-                    "ytl": round(float(xyxy[1]), 2),
-                    "xbr": round(float(xyxy[2]), 2),
-                    "ybr": round(float(xyxy[3]), 2),
-                    "confidence": round(float(conf), 4),
-                })
-
-        if dets:
-            detections[frame_idx] = dets
+    for frame_idx in sorted(raw_cache.keys()):
+        frame_dets = [d for d in raw_cache[frame_idx] if d["confidence"] >= conf_thres]
+        if not frame_dets:
+            continue
+        # tracker adds 'track_id' to each det in-place
+        tracked = tracker.update([dict(d) for d in frame_dets])
+        detections[frame_idx] = tracked
 
     detected_classes = list({d["class_name"] for dets in detections.values() for d in dets})
     return {"detections": detections, "classes": detected_classes}

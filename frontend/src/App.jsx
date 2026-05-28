@@ -71,6 +71,8 @@ function App() {
   // model states
   const [yoloConf, setYoloConf] = useState(0.25) // confidence level, default is 0.25
   const [isRunningYolo, setIsRunningYolo] = useState(false)
+  const [matchThresh, setMatchThresh] = useState(0.5) // bytetrack settings
+  const [maxLost, setMaxLost] = useState(90)
 
   // format time into HH:MM:SS
   function formatTime(seconds) {
@@ -119,7 +121,7 @@ function App() {
     try {
       const res = await axios.post(
         `http://localhost:8000/run-yolo/${videoName}`,
-        { conf: yoloConf },
+        { conf: yoloConf, match_thresh: matchThresh, max_lost: maxLost },
         { timeout: 0 }  // no timeout, bc inference can take a while
       )
       const { detections } = res.data
@@ -155,6 +157,7 @@ function App() {
             width:      (d.xbr - d.xtl) * scaleX,
             height:     (d.ybr - d.ytl) * scaleY,
             confidence: d.confidence,
+            trackId:    d.track_id ?? null,
             tags:       [],
           }))
           next[frameIdx] = [...(next[frameIdx] ?? []), ...newBboxes]
@@ -716,6 +719,27 @@ return (
                 style={{ flex: 1, accentColor: '#750000' }}
               />
             </div>
+            {/* match threshold slider */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+              <label style={{ fontSize: 11 }}>Match: {matchThresh}</label>
+              <input
+                type="range" min={0.1} max={0.9} step={0.05}
+                value={matchThresh}
+                onChange={(e) => setMatchThresh(parseFloat(e.target.value))}
+                style={{ flex: 1, accentColor: '#750000' }}
+              />
+            </div>
+
+            {/* max lost slider */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+              <label style={{ fontSize: 11 }}>Max lost: {maxLost}f</label>
+              <input
+                type="range" min={60} max={120} step={5}
+                value={maxLost}
+                onChange={(e) => setMaxLost(parseInt(e.target.value))}
+                style={{ flex: 1, accentColor: '#750000' }}
+              />
+            </div>
             {/* run yolo button */}
             <button
               style={{ width: '100%' }}
@@ -936,7 +960,12 @@ return (
                 style={{ background: selectedBboxIds.includes(b.id) ? '#333' : 'transparent' }}
               >
                 {/* bbox tags */}
-                {i + 1}. {b.className} <span style={{ color: '#888', fontSize: 11 }}>#{b.id.slice(0, 6)}</span>
+                {i + 1}. {b.className}{' '}
+                <span style={{ color: '#888', fontSize: 11 }}>
+                  {b.trackId !== null && b.trackId !== undefined
+                    ? `#${b.trackId}`
+                    : `#${b.id.slice(0, 6)}`}
+                </span>
                 {(b.tags ?? []).map(tag => (
                   <span key={tag} style={{
                     background: '#750000',

@@ -60,14 +60,19 @@ Open http://localhost:5173/ in your browser.
 
 ## YOLOv7-tiny Inference
 
-With a video loaded, look at the **Models** panel in the left sidebar:
+Run YOLOv7-tiny on all frames via the **Run YOLOv7-tiny** button in the Models panel (left sidebar).
 
-1. Adjust the **Conf** slider to set the confidence threshold (lower = more detections, higher = fewer but more accurate)
-2. Click **Run YOLOv7-tiny** to run inference across all frames
-3. Detected bboxes will be pre-populated across all frames automatically
-4. Re-run at any time with a different confidence level to update detections (manually drawn annotations are preserved. only YOLO-generated boxes are replaced on re-runs)
+**Parameters (adjustable via sliders):**
 
-Inference runs on GPU if available, CPU otherwise
+| Parameter | What it does | Default | Tune if... |
+|---|---|---|---|
+| Conf | Min confidence to keep a detection | 0.25 | Too many false positives → raise. Missing detections → lower. |
+| Match | Min IoU to confirm a track-detection pair | 0.5 | IDs switching on fast-moving objects → lower. Wrong merges → raise. |
+| Max lost | Frames a lost track stays alive before being dropped | 90 | IDs changing after brief occlusion → raise. Ghost tracks lingering → lower. |
+
+**Caching:** YOLO inference runs once per video and is cached to `data/output/{video_name}/yolo_raw_cache.json`. 
+
+Adjusting Conf/Match/Max lost and re-running skips inference and only re-runs the tracker — near instant. To force a full re-run, delete the cache file. Inference runs on GPU if available, CPU otherwise
 
 ---
 
