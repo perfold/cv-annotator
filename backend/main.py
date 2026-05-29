@@ -1,5 +1,5 @@
 from fastapi import FastAPI, File, UploadFile, Body, Form
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import os
 import json
@@ -7,7 +7,10 @@ import subprocess
 import sys
 from pathlib import Path
 from bytetrack import ByteTracker
+import csv
+import io
 
+# paths
 BASE_DIR     = Path(__file__).parent.parent
 DATA_DIR     = BASE_DIR / "data"
 INPUT_DIR    = DATA_DIR / "input"
@@ -242,3 +245,97 @@ async def run_yolo(video_name: str, payload: dict = Body(...)):
 
     detected_classes = list({d["class_name"] for dets in detections.values() for d in dets})
     return {"detections": detections, "classes": detected_classes}
+
+# compute class label distribution for video
+def compute_stats(video_name: str, bboxes_by_frame: dict) -> list[dict]:
+    class_bbox_counts = {}
+    class_frame_sets = {}
+
+    for frame_idx, bboxes in bboxes_by_frame.items():
+        for bbox in bboxes:
+            cls = bbox.get("className", "unknown")
+            class_bbox_counts[cls] = class_bbox_counts.get(cls, 0) + 1
+            if cls not in class_frame_sets:
+                class_frame_sets[cls] = set()
+            class_frame_sets[cls].add(frame_idx)
+
+    total_bboxes = sum(class_bbox_counts.values())
+    total_annotated_frames = len(bboxes_by_frame)
+
+    rows = []
+    for cls in sorted(class_bbox_counts.keys()):
+        bbox_count = class_bbox_counts[cls]
+        frame_count = len(class_frame_sets[cls])
+        rows.append({
+            "video": video_name,
+            "class": cls,
+            "bbox_count": bbox_count,
+            "pct_of_total": f"{bbox_count / total_bboxes * 100:.1f}%" if total_bboxes else "0.0%",
+            "frame_count": frame_count,
+            "pct_of_annotated_frames": f"{frame_count / total_annotated_frames * 100:.1f}%" if total_annotated_frames else "0.0%",
+        })
+
+    return rows
+
+# list all uploaded videos with annotations.json, to let user pick which project to export stats for
+@app.get("/projects")
+def list_projects():
+    projects = []
+    for video_dir in OUTPUT_DIR.iterdir():
+        if not video_dir.is_dir():
+            continue
+        ann_path = video_dir / "annotations.json"
+        if not ann_path.exists():
+            continue
+        with open(ann_path) as f:
+            data = json.load(f)
+        bboxes_by_frame = data.get("bboxesByFrame", {})
+        all_bboxes = [b for bboxes in bboxes_by_frame.values() for b in bboxes]
+        if not all_bboxes:  # skip projects with no annotations
+            continue
+        classes = list({b.get("className", "unknown") for b in all_bboxes})
+        projects.append({ 
+            "video_name":   video_dir.name,
+            "frame_count":  len(bboxes_by_frame),
+            "bbox_count":   len(all_bboxes),
+            "class_count":  len(classes),
+            "classes":      sorted(classes),
+            "saved_at":     data.get("savedAt", "unknown"),
+        })
+    return sorted(projects, key=lambda p: p["video_name"])
+
+# export class stats for video
+@app.post("/stats/export")
+async def export_stats_selected(payload: dict = Body(...)):
+    video_names = payload.get("video_names", [])
+    if not video_names:
+        return {"error": "No projects selected."}
+
+    all_rows = []
+    for video_name in video_names:
+        ann_path = OUTPUT_DIR / video_name / "annotations.json"
+        if not ann_path.exists():
+            continue
+        with open(ann_path) as f:
+            data = json.load(f)
+        bboxes_by_frame = data.get("bboxesByFrame", {})
+        all_rows.extend(compute_stats(video_name, bboxes_by_frame))
+
+    if not all_rows:
+        return {"error": "No annotations found for selected projects."}
+
+    fieldnames = [
+        "video", "class", "bbox_count", "pct_of_total",
+        "frame_count", "pct_of_annotated_frames"
+    ]
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
+    writer.writeheader()
+    writer.writerows(all_rows)
+    buf.seek(0)
+
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=stats_export.csv"}
+    )

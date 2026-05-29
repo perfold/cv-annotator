@@ -36,6 +36,12 @@ function App() {
   const intervalRef = useRef(null)
   const [frameInterval, setFrameInterval] = useState(10) // user definable keyframe interval, 10 is default
 
+  // export stats states
+  const [showStatsModal, setShowStatsModal] = useState(false)
+  const [projectsList, setProjectsList] = useState([])
+  const [selectedProjects, setSelectedProjects] = useState([])
+  const [isLoadingProjects, setIsLoadingProjects] = useState(false)
+
   // select/draw mode 
   const [mode, setMode] = useState('select') // toggle between select and draw mode 
   const [showSaved, setShowSaved] = useState(false)
@@ -618,6 +624,39 @@ function App() {
     a.click()
     URL.revokeObjectURL(url)
   }    
+
+  // open export stat video selector
+  async function openStatsModal() {
+    setIsLoadingProjects(true)
+    setShowStatsModal(true)
+    const res = await axios.get('http://localhost:8000/projects')
+    setProjectsList(res.data)
+    setSelectedProjects(videoName ? [videoName] : res.data.map(p => p.video_name)) // only select video that is open, by default
+    setIsLoadingProjects(false)
+  }
+
+  // function to export stats of selected videos, into .csv format
+  async function exportSelectedStats() {
+    if (selectedProjects.length === 0) return
+    const res = await fetch('http://localhost:8000/stats/export', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ video_names: selectedProjects }),
+    })
+    const blob = await res.blob()
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = 'stats_export.csv'
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+
+  // function to select projects/videos
+  function toggleProject(videoName) {
+    setSelectedProjects(prev =>
+      prev.includes(videoName) ? prev.filter(n => n !== videoName) : [...prev, videoName]
+    )
+  }                     
   
 // UI block
 return (
@@ -795,6 +834,12 @@ return (
               onClick={exportCVATXML}
             >
               Export XML
+            </button>
+            <button
+              tabIndex={-1}
+              onClick={openStatsModal}
+            >
+              Export Stats
             </button>
           </div>
           <div style={{display:'flex', justifyContent:'flex-start'}}>
@@ -999,7 +1044,7 @@ return (
         boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
       }}
     onClick={e => e.stopPropagation()}  // prevent closing when clicking inside menu
-  >
+    >
     <div style={{ padding: '4px 10px', color: '#888', fontSize: 11, borderBottom: '1px solid #333' }}> {/* context menu text color */}
       Change class:
     </div>
@@ -1055,7 +1100,94 @@ return (
     </div>
   </div>
 )}
-    </div>
+{/* video selection for export to csv */}
+{showStatsModal && (
+      <div style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000
+      }}
+        onClick={() => setShowStatsModal(false)}
+      >
+        <div style={{
+          background: '#1a1a1a', border: '1px solid #555', borderRadius: 8,
+          padding: 24, minWidth: 420, maxHeight: '70vh', display: 'flex',
+          flexDirection: 'column', gap: 12
+        }}
+          onClick={e => e.stopPropagation()}
+        >
+          <h3 style={{ margin: 0 }}>Export Stats</h3>
+
+          {isLoadingProjects ? (
+            <p style={{ color: '#888' }}>Loading projects...</p>
+          ) : projectsList.length === 0 ? (
+            <p style={{ color: '#888' }}>No saved projects found.</p>
+          ) : (
+            <>
+              {/* select all toggle */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #333', paddingBottom: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={selectedProjects.length === projectsList.length}
+                  onChange={() =>
+                    setSelectedProjects(
+                      selectedProjects.length === projectsList.length
+                        ? []
+                        : projectsList.map(p => p.video_name)
+                    )
+                  }
+                />
+                <span style={{ fontWeight: 'bold' }}>Select all ({projectsList.length})</span>
+              </div>
+
+              {/* video/project list */}
+              <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {projectsList.map(p => (
+                  <label key={p.video_name} style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 10,
+                    padding: '6px 8px', borderRadius: 4, cursor: 'pointer',
+                    textAlign: 'left',
+                    background: selectedProjects.includes(p.video_name) ? '#2a2a2a' : 'transparent'
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedProjects.includes(p.video_name)}
+                      onChange={() => toggleProject(p.video_name)}
+                      style={{ marginTop: 2 }}
+                    />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <span style={{ fontWeight: 'bold', fontSize: 13 }}>{p.video_name}</span>
+                      <span style={{ color: '#888', fontSize: 11 }}>
+                        {p.bbox_count} bboxes · {p.class_count} classes · {p.frame_count} annotated frames
+                      </span>
+                      <span style={{ color: '#555', fontSize: 10 }}>
+                        {p.classes.join(', ') || 'no classes'}
+                      </span>
+                      <span style={{ color: '#444', fontSize: 10 }}>
+                        Saved: {p.saved_at !== 'unknown' ? new Date(p.saved_at).toLocaleString() : 'unknown'}
+                      </span>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* footer */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, borderTop: '1px solid #333', paddingTop: 12 }}>
+            <button tabIndex={-1} onClick={() => setShowStatsModal(false)}>Cancel</button>
+            <button
+              tabIndex={-1}
+              disabled={selectedProjects.length === 0}
+              onClick={async () => { await exportSelectedStats(); setShowStatsModal(false) }}
+              style={{ background: '#750000', color: '#fff', border: 'none', padding: '6px 16px', borderRadius: 4, cursor: 'pointer' }}
+            >
+              Export {selectedProjects.length > 0 ? `(${selectedProjects.length})` : ''}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+  </div>
   )
 }
 
