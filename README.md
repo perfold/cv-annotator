@@ -72,7 +72,7 @@ Run YOLOv7-tiny on all frames via the **Run YOLOv7-tiny** button in the Models p
 
 **Caching:** YOLO inference runs once per video and is cached to `data/output/{video_name}/yolo_raw_cache.json`. 
 
-Adjusting Conf/Match/Max lost and re-running skips inference and only re-runs the tracker — near instant. To force a full re-run, delete the cache file. Inference runs on GPU if available, CPU otherwise
+Adjusting Conf/Match/Max lost and re-running skips inference and only re-runs the trackerS. To force a full re-run, delete the cache file. Inference runs on GPU if available, CPU otherwise
 
 ---
 
@@ -154,7 +154,7 @@ Adjusting Conf/Match/Max lost and re-running skips inference and only re-runs th
 - [ ] Select an existing bbox, mark it as a FA, then auto remove all similar instances in subsequent frames via template-matching or similar algorithms. 
 - [ ] Outlier detection algorithm based on annotated classes to identify which annotations for that class could be wrong. 
 - [ ] Use (any variant of) SAM (https://github.com/facebookresearch/segment-anything) to tighten bounding boxes on demand for all bboxes in a frame. 
-- [ ] Summarise the class label distribution stats for each project/ across all projects and export in csv format. 
-- [ ] Extract and export bbox target chips by saving them in respective class folders. 
+- [x] Summarise the class label distribution stats for each project/ across all projects and export in csv format. 
+- [x] Extract and export bbox target chips by saving them in respective class folders. 
 
 ---

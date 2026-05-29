@@ -9,6 +9,7 @@ from pathlib import Path
 from bytetrack import ByteTracker
 import csv
 import io
+from PIL import Image
 
 # paths
 BASE_DIR     = Path(__file__).parent.parent
@@ -339,3 +340,71 @@ async def export_stats_selected(payload: dict = Body(...)):
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=stats_export.csv"}
     )
+
+# export target chips of videos selected
+@app.post("/chips/export")
+async def export_chips(payload: dict = Body(...)):
+    video_names = payload.get("video_names", [])
+    if not video_names:
+        return {"error": "No projects selected."}
+
+    CHIPS_DIR = DATA_DIR / "chips"
+    total_chips = 0
+    skipped = 0
+
+    for video_name in video_names:
+        ann_path = OUTPUT_DIR / video_name / "annotations.json"
+        if not ann_path.exists():
+            continue
+        with open(ann_path) as f:
+            data = json.load(f)
+
+        bboxes_by_frame = data.get("bboxesByFrame", {})
+        orig_w = data.get("origW")
+        orig_h = data.get("origH")
+        disp_w = data.get("dispW")
+        disp_h = data.get("dispH")
+
+        if not all([orig_w, orig_h, disp_w, disp_h]):
+            skipped += 1
+            continue
+
+        scale_x = orig_w / disp_w # make sure bbox properly aligns with target in image
+        scale_y = orig_h / disp_h
+
+        for frame_idx_str, bboxes in bboxes_by_frame.items():
+            frame_idx = int(frame_idx_str)
+            frame_path = OUTPUT_DIR / video_name / f"{frame_idx + 1:07d}.jpg"
+            if not frame_path.exists():
+                continue
+
+            img = Image.open(frame_path)
+
+            for bbox in bboxes:
+                cls = bbox.get("className", "unknown")
+                x = bbox.get("x", 0) * scale_x
+                y = bbox.get("y", 0) * scale_y
+                w = bbox.get("width", 0) * scale_x
+                h = bbox.get("height", 0) * scale_y
+
+                left   = max(0, int(x))
+                top    = max(0, int(y))
+                right  = min(orig_w, int(x + w))
+                bottom = min(orig_h, int(y + h))
+
+                if right <= left or bottom <= top:
+                    continue
+
+                track_id = bbox.get("trackId")
+                uid = bbox.get("id", "000000")[:6]
+                track_str = f"t{track_id}" if track_id is not None else "tX"
+                filename = f"{video_name}_frame{frame_idx:07d}_{track_str}_{uid}.jpg" # so we can track down and index specific target trackid if needed
+
+                out_dir = CHIPS_DIR / cls
+                out_dir.mkdir(parents=True, exist_ok=True)
+
+                chip = img.crop((left, top, right, bottom))
+                chip.save(out_dir / filename, quality=95)
+                total_chips += 1
+
+    return {"total_chips": total_chips, "skipped_videos": skipped}
