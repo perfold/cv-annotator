@@ -24,6 +24,7 @@ function AnnotationCanvas({
   mode,
   updateBboxes,
   onDimsReady,
+  outlierBboxIds,
 }) {
   // refs and states
   const containerRef = useRef();
@@ -457,9 +458,11 @@ function AnnotationCanvas({
                   y={0}
                   width={b.width}
                   height={b.height}
-                  stroke={color}
+                  stroke={outlierBboxIds?.includes(b.id) ? "#ffcc00" : color}
                   strokeWidth={isSelected ? 6 : 2} // thickens line when box is highlighted
-                  fill={color + "25"} // intensity of bbox fill colour
+                  fill={
+                    (outlierBboxIds?.includes(b.id) ? "#ffcc00" : color) + "25"
+                  } // intensity of bbox fill colour
                 />
                 {/* class:id tag above bbox */}
                 <Label x={0} y={-20}>

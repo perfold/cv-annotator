@@ -408,3 +408,125 @@ async def export_chips(payload: dict = Body(...)):
                 total_chips += 1
 
     return {"total_chips": total_chips, "skipped_videos": skipped}
+
+CLASS_ORIENTATION_RULES = { # aspect ratio threshold for what is considered an outlier
+    "person": {"max_ratio": 1.0}, # if your aspect ratio is >1:1 aka wider than tall, probably false alarm for person
+
+    "car": {"min_ratio": 1.5}, # min ratio because these vehicles are horizontal on video
+    "truck": {"min_ratio": 2.0},
+    "bus": {"min_ratio": 2.5},
+    "train": {"min_ratio": 3.0},
+    "motorcycle": {"min_ratio": 1.2},
+    "bicycle": {"min_ratio": 1.5},
+    "boat": {"min_ratio": 1.5},
+    "airplane": {"min_ratio": 2.0},
+}
+
+# add annotation to outlier list
+def add_outlier(outliers, flagged_ids, frame_idx, bbox_id, cls, reason, detail, timestamp):
+    key = (bbox_id, reason)
+    if key in flagged_ids:
+        return
+    flagged_ids.add(key)
+    outliers.append({
+        "frame_idx": frame_idx,
+        "bbox_id":   bbox_id,
+        "class":     cls,
+        "reason":    reason,
+        "detail":    detail,
+        "timestamp": timestamp,
+    })
+
+# get all the outliers in the video
+@app.post("/outliers/{video_name}")
+async def detect_outliers(video_name: str, payload: dict = Body(...)):
+    sigma_thresh    = payload.get("sigma", 2.0) # how far outside mean, to count as outlier 
+    rare_pct_thresh = payload.get("rare_pct", 1.0) # how rare to consider annotation outlier
+    fps             = payload.get("fps", 30)
+
+    ann_path = OUTPUT_DIR / video_name / "annotations.json"
+    if not ann_path.exists():
+        return {"outliers": []}
+
+    with open(ann_path) as f:
+        data = json.load(f)
+
+    bboxes_by_frame = data.get("bboxesByFrame", {})
+    total_annotated_frames = len(bboxes_by_frame)
+    if total_annotated_frames == 0:
+        return {"outliers": []}
+
+    # collect per-class data
+    class_ratios = {} # list of (frame_idx, bbox_id, ratio)
+    class_frame_sets = {} # set of frame_idx it appears in
+
+    for frame_idx_str, bboxes in bboxes_by_frame.items():
+        frame_idx = int(frame_idx_str)
+        for bbox in bboxes:
+            cls = bbox.get("className", "unknown")
+            w   = bbox.get("width", 0)
+            h   = bbox.get("height", 0)
+            if h == 0:
+                continue
+            ratio = w / h
+            if cls not in class_ratios:
+                class_ratios[cls]     = []
+                class_frame_sets[cls] = set()
+            class_ratios[cls].append((frame_idx, bbox.get("id"), ratio))
+            class_frame_sets[cls].add(frame_idx) # track which frames this class appears in
+
+    flagged_ids = set()
+    outliers    = []
+
+    for cls, entries in class_ratios.items():
+        ratios = [r for _, _, r in entries] # get list of ratios
+
+        # rule 1: fixed orientation/ratio check
+        orientation_rule = None
+        for keyword, rule in CLASS_ORIENTATION_RULES.items():
+            if keyword in cls.lower():
+                orientation_rule = rule
+                break
+
+        if orientation_rule:
+            for frame_idx, bbox_id, ratio in entries:
+                seconds   = frame_idx / fps
+                timestamp = f"{int(seconds // 3600):02d}:{int((seconds % 3600) // 60):02d}:{int(seconds % 60):02d}"
+
+                if "max_ratio" in orientation_rule and ratio > orientation_rule["max_ratio"]: # if person wider than tall, probably not person (outlier/false alarm)
+                    add_outlier(outliers, flagged_ids, frame_idx, bbox_id, cls, "orientation",
+                        f"w/h={ratio:.2f} exceeds max {orientation_rule['max_ratio']}", timestamp)
+                    
+                if "min_ratio" in orientation_rule and ratio < orientation_rule["min_ratio"]: # if vehicle taller than wide, probably wrong too
+                    add_outlier(outliers, flagged_ids, frame_idx, bbox_id, cls, "orientation",
+                        f"w/h={ratio:.2f} below min {orientation_rule['min_ratio']}", timestamp)
+
+        # rule 2: statistical aspect ratio outlier
+        if len(ratios) >= 10: # std not useful if smaller
+            mean     = sum(ratios) / len(ratios)
+            variance = sum((r - mean) ** 2 for r in ratios) / len(ratios)
+            std      = variance ** 0.5
+            if std > 0:
+                for frame_idx, bbox_id, ratio in entries:
+                    if orientation_rule: # skip those that pass rule 1
+                        if "max_ratio" in orientation_rule and ratio <= orientation_rule["max_ratio"]:
+                            continue
+                        if "min_ratio" in orientation_rule and ratio >= orientation_rule["min_ratio"]:
+                            continue
+                    seconds   = frame_idx / fps
+                    timestamp = f"{int(seconds // 3600):02d}:{int((seconds % 3600) // 60):02d}:{int(seconds % 60):02d}"
+                    if abs(ratio - mean) > sigma_thresh * std: # if ratio too far from mean, by sigma_thresh * std, outlier
+                        add_outlier(outliers, flagged_ids, frame_idx, bbox_id, cls, "aspect_ratio",
+                            f"w/h={ratio:.2f} (mean={mean:.2f}, {abs(ratio - mean) / std:.1f}σ away)", timestamp)
+
+        # rule 3: rare class
+        frame_pct = len(class_frame_sets[cls]) / total_annotated_frames * 100
+        if frame_pct <= rare_pct_thresh: # if seen too little times, probably outlier too
+            for frame_idx, bbox_id, _ in entries:
+                seconds   = frame_idx / fps
+                timestamp = f"{int(seconds // 3600):02d}:{int((seconds % 3600) // 60):02d}:{int(seconds % 60):02d}"
+                add_outlier(outliers, flagged_ids, frame_idx, bbox_id, cls, "rare_class",
+                    f"appears in {frame_pct:.2f}% of frames (threshold {rare_pct_thresh}%)", timestamp)
+
+    outliers.sort(key=lambda x: x["frame_idx"]) # sort by frame so sidebar is in order
+    return {"outliers": outliers}
