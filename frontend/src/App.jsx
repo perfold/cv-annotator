@@ -149,6 +149,43 @@ function App() {
     }
   }
 
+  // load frames from folder
+  async function loadFrameFolder(folderPath) {
+    if (!folderPath) return;
+    try {
+      const res = await axios.post(
+        "http://localhost:8000/load-frames-from-path",
+        {
+          folder_path: folderPath,
+        },
+      );
+      if (res.data.error) {
+        alert(res.data.error);
+        return;
+      }
+      setVideoName(res.data.video_name);
+      setFrameCount(res.data.frame_count);
+      setFps(res.data.frame_rate);
+      setCurrentFrame(0);
+      setBboxesByFrame({});
+      setOutliers([]);
+      pastRef.current = [];
+      futureRef.current = [];
+      const session = await loadSession(res.data.video_name);
+      if (session) {
+        const resume = window.confirm(
+          `Resume previous session?\nLast saved: ${new Date(session.savedAt).toLocaleString()}`,
+        );
+        if (resume) {
+          setBboxesByFrame(session.bboxesByFrame);
+          setClasses(session.classes);
+          setClassColors(session.classColors ?? {});
+        }
+      }
+    } catch (err) {
+      alert("Failed to load folder: " + err.message);
+    }
+  }
   // run yolo on all frames
   async function runYolo() {
     if (!videoName) return;
@@ -833,71 +870,81 @@ function App() {
 
       {/* class section */}
       <div
-        style={{ width: "20%", borderRight: "1px solid #ccc", padding: "8px" }}
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          width: "20%",
+          borderRight: "1px solid #ccc",
+          padding: "8px",
+        }}
       >
-        <h3>Classes</h3>
-        <p>Active class: {activeClass ?? "N/A"}</p> {/* shows selected class */}
-        {/* new class input */}
-        <input
-          type="text"
-          value={newClassName}
-          onChange={(e) => setNewClassName(e.target.value)}
-          onKeyDown={(e) => {
-            e.stopPropagation();
-            if (e.key === "Enter") addClass();
-          }}
-          placeholder="Enter new class"
-          style={{ width: "100%", boxSizing: "border-box" }}
-        />
-        <button onClick={addClass}>Add</button> {/* button to add new class */}
-        <ul>
-          {/* class list & highlight (upon selection) */}
-          {classes.map((className) => (
-            <li
-              key={className}
-              onClick={() => setActiveClass(className)}
-              style={{
-                fontWeight: activeClass === className ? "bold" : "normal",
-                backgroundColor:
-                  activeClass === className ? "#750000" : "transparent",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "6px",
-                padding: "2px 4px",
-              }}
-            >
-              <input
-                type="color"
-                value={classColors[className] ?? "#ffffff"}
-                onChange={(e) =>
-                  setClassColors((prev) => ({
-                    ...prev,
-                    [className]: e.target.value,
-                  }))
-                } // lets you pick which colour you want
-                onClick={(e) => e.stopPropagation()}
+        <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
+          <h3>Classes</h3>
+          <p>Active class: {activeClass ?? "N/A"}</p>{" "}
+          {/* shows selected class */}
+          {/* new class input */}
+          <input
+            type="text"
+            value={newClassName}
+            onChange={(e) => setNewClassName(e.target.value)}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === "Enter") addClass();
+            }}
+            placeholder="Enter new class"
+            style={{ width: "100%", boxSizing: "border-box" }}
+          />
+          <button onClick={addClass}>Add</button>{" "}
+          {/* button to add new class */}
+          <ul>
+            {/* class list & highlight (upon selection) */}
+            {classes.map((className) => (
+              <li
+                key={className}
+                onClick={() => setActiveClass(className)}
                 style={{
-                  width: 20,
-                  height: 20,
-                  border: "none",
-                  padding: 0,
+                  fontWeight: activeClass === className ? "bold" : "normal",
+                  backgroundColor:
+                    activeClass === className ? "#750000" : "transparent",
                   cursor: "pointer",
-                }}
-              />
-              {className}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  deleteClass(className);
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "6px",
+                  padding: "2px 4px",
                 }}
               >
-                x
-              </button>
-            </li>
-          ))}
-        </ul>
+                <input
+                  type="color"
+                  value={classColors[className] ?? "#ffffff"}
+                  onChange={(e) =>
+                    setClassColors((prev) => ({
+                      ...prev,
+                      [className]: e.target.value,
+                    }))
+                  } // lets you pick which colour you want
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    width: 20,
+                    height: 20,
+                    border: "none",
+                    padding: 0,
+                    cursor: "pointer",
+                  }}
+                />
+                {className}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deleteClass(className);
+                  }}
+                >
+                  x
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
         {/* tag section */}
         <div
           style={{ borderTop: "1px solid #ccc", marginTop: 8, paddingTop: 8 }}
@@ -979,7 +1026,11 @@ function App() {
           </ul>
           {/* model selection */}
           <div
-            style={{ borderTop: "1px solid #ccc", marginTop: 8, paddingTop: 8 }}
+            style={{
+              borderTop: "1px solid #ccc",
+              marginTop: 8,
+              paddingTop: 8,
+            }}
           >
             <h3>Models</h3>
             {/* confidence level slider */}
@@ -991,7 +1042,9 @@ function App() {
                 marginTop: 4,
               }}
             >
-              <label style={{ fontSize: 11 }}>Conf: {yoloConf}</label>
+              <label style={{ fontSize: 11, width: 50, flexShrink: 0 }}>
+                Conf: {yoloConf}
+              </label>
               <input
                 type="range"
                 min={0.05}
@@ -999,7 +1052,7 @@ function App() {
                 step={0.05}
                 value={yoloConf}
                 onChange={(e) => setYoloConf(parseFloat(e.target.value))}
-                style={{ flex: 1, accentColor: "#750000" }}
+                style={{ flex: 1, accentColor: "#750000", width: "100%" }}
               />
             </div>
             {/* match threshold slider */}
@@ -1011,7 +1064,9 @@ function App() {
                 marginTop: 4,
               }}
             >
-              <label style={{ fontSize: 11 }}>Match: {matchThresh}</label>
+              <label style={{ fontSize: 11, width: 50, flexShrink: 0 }}>
+                Match: {matchThresh}
+              </label>
               <input
                 type="range"
                 min={0.1}
@@ -1019,7 +1074,7 @@ function App() {
                 step={0.05}
                 value={matchThresh}
                 onChange={(e) => setMatchThresh(parseFloat(e.target.value))}
-                style={{ flex: 1, accentColor: "#750000" }}
+                style={{ flex: 1, accentColor: "#750000", width: "100%" }}
               />
             </div>
 
@@ -1032,7 +1087,9 @@ function App() {
                 marginTop: 4,
               }}
             >
-              <label style={{ fontSize: 11 }}>Max lost: {maxLost}f</label>
+              <label style={{ fontSize: 11, width: 50, flexShrink: 0 }}>
+                Max lost: {maxLost}f
+              </label>
               <input
                 type="range"
                 min={60}
@@ -1040,7 +1097,7 @@ function App() {
                 step={5}
                 value={maxLost}
                 onChange={(e) => setMaxLost(parseInt(e.target.value))}
-                style={{ flex: 1, accentColor: "#750000" }}
+                style={{ flex: 1, accentColor: "#750000", width: "100%" }}
               />
             </div>
             {/* run yolo button */}
@@ -1069,7 +1126,7 @@ function App() {
       <div
         style={{
           flex: 1,
-          padding: "8px",
+          padding: "2px 8px",
           display: "flex",
           flexDirection: "column",
           alignItems: "stretch",
@@ -1080,16 +1137,40 @@ function App() {
           style={{
             display: "flex",
             justifyContent: "space-between",
-            padding: "8px",
           }}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            {/* video input button */}
-            <input
-              type="file"
-              accept="video/*"
-              onChange={(e) => uploadVideo(e.target.files[0])}
-            />
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {/* video input button */}
+              <input
+                type="file"
+                accept="video/*"
+                id="video-input"
+                style={{ display: "none" }}
+                onChange={(e) => uploadVideo(e.target.files[0])}
+              />
+              <button
+                tabIndex={-1}
+                onClick={() => document.getElementById("video-input").click()}
+              >
+                Upload Video
+              </button>
+              {/* frame folder path input */}
+              <div>
+                <input
+                  type="text"
+                  placeholder="Absolute Path"
+                  id="folder-path-input"
+                  style={{ flex: "0 1 auto" }}
+                  size="9"
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === "Enter")
+                      loadFrameFolder(e.target.value.trim());
+                  }}
+                />
+              </div>{" "}
+            </div>
             <div
               style={{
                 display: "flex",
@@ -1127,10 +1208,20 @@ function App() {
               >
                 Export XML
               </button>
-              <button tabIndex={-1} onClick={openStatsModal}>
+              <button
+                tabIndex={-1}
+                disabled={!videoName}
+                onClick={openStatsModal}
+                style={{ width: "25%" }}
+              >
                 Export Stats
               </button>
-              <button tabIndex={-1} onClick={openChipsModal}>
+              <button
+                tabIndex={-1}
+                disabled={!videoName}
+                onClick={openChipsModal}
+                style={{ width: "25%" }}
+              >
                 Export Chips
               </button>
             </div>
@@ -1481,6 +1572,7 @@ function App() {
             minHeight: 0,
             borderTop: "1px solid #ccc",
             paddingTop: 8,
+            width: "100%",
           }}
         >
           <h3 style={{ margin: "0 0 8px 0" }}>Outlier Detection</h3>
@@ -1494,8 +1586,14 @@ function App() {
               marginBottom: 4,
             }}
           >
-            <label style={{ fontSize: 11, whiteSpace: "nowrap" }}>
-              σ threshold: {sigmaThresh.toFixed(1)}
+            <label
+              style={{
+                fontSize: 11,
+                width: 50,
+                flexShrink: 0,
+              }}
+            >
+              σ thresh: {sigmaThresh.toFixed(1)}
             </label>
             <input
               type="range"
@@ -1517,7 +1615,13 @@ function App() {
               marginBottom: 8,
             }}
           >
-            <label style={{ fontSize: 11, whiteSpace: "nowrap" }}>
+            <label
+              style={{
+                fontSize: 11,
+                width: 50,
+                flexShrink: 0,
+              }}
+            >
               Rare: ≤{rarePctThresh.toFixed(1)}%
             </label>
             <input

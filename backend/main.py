@@ -140,6 +140,36 @@ async def upload_video(file: UploadFile = File(...), quality: int = Form(default
         "frame_rate": fps,
     }
 
+# grab frames fromm frame folder path
+@app.post("/load-frames-from-path")
+async def load_frames_from_path(payload: dict = Body(...)):
+    folder_path = Path(payload["folder_path"])
+    
+    if not folder_path.exists() or not folder_path.is_dir():
+        return {"error": f"Folder not found: {folder_path}"}
+    
+    image_exts = {".jpg", ".jpeg", ".png"}
+    frames = sorted([f for f in folder_path.iterdir() if f.suffix.lower() in image_exts])
+    
+    if not frames:
+        return {"error": "No image files found in folder"}
+
+    # symlink or copy frames into output dir so existing get_frame endpoint works
+    folder_name = folder_path.name
+    output_folder = OUTPUT_DIR / folder_name
+    output_folder.mkdir(parents=True, exist_ok=True)
+
+    for frame in frames:
+        dest = output_folder / frame.name
+        if not dest.exists():
+            dest.symlink_to(frame.resolve())
+
+    return {
+        "video_name": folder_name,
+        "frame_count": len(frames),
+        "frame_rate": 30,
+    }
+
 # re-extract frame, if quality toggle is changed
 @app.post("/reextract/{video_name}")
 async def reextract_frames(video_name: str, payload: dict = Body(...)):
@@ -159,8 +189,11 @@ async def reextract_frames(video_name: str, payload: dict = Body(...)):
 # function to get frame
 @app.get("/frame/{video_name}/{frame_idx}")
 def get_frame(video_name: str, frame_idx: int):
-    frame_path = os.path.join(OUTPUT_DIR, video_name, f"{frame_idx + 1:07d}.jpg")
-    return FileResponse(frame_path)
+    folder = OUTPUT_DIR / video_name
+    frames = sorted(folder.glob("*.jpg"))
+    if frame_idx >= len(frames):
+        return {"error": "Frame index out of range"}
+    return FileResponse(frames[frame_idx])
 
 
 # function to save annotations
@@ -196,8 +229,12 @@ async def run_yolo(video_name: str, payload: dict = Body(...)):
         dataset    = LoadImages(str(frames_dir), img_size=640, stride=stride)
         raw_cache  = {}   # frame_idx -> list of dets at conf=0.01
 
+        # build filename -> sorted index mapping so frame_idx is consistent with get_frame
+        all_frames = sorted(frames_dir.glob("*.jpg"))
+        filename_to_idx = {f.name: i for i, f in enumerate(all_frames)}
+
         for path, img, im0, _ in dataset:
-            frame_idx = int(Path(path).stem) - 1
+            frame_idx = filename_to_idx.get(Path(path).name, 0)
             img = torch.from_numpy(img).to(device).float() / 255.0
             if img.ndimension() == 3:
                 img = img.unsqueeze(0)
