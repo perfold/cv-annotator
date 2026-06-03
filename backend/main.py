@@ -140,7 +140,7 @@ async def upload_video(file: UploadFile = File(...), quality: int = Form(default
         "frame_rate": fps,
     }
 
-# grab frames fromm frame folder path
+# grab frames from frame folder path
 @app.post("/load-frames-from-path")
 async def load_frames_from_path(payload: dict = Body(...)):
     folder_path = Path(payload["folder_path"])

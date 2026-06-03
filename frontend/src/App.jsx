@@ -1,29 +1,13 @@
 import { useEffect, useState, useRef } from "react";
 import axios from "axios";
-import AnnotationCanvas from "./AnnotationCanvas";
-
-// global constants
-const PALETTE = [
-  // anotations will be auto assigned one of these colors
-  "#e74c3c",
-  "#3498db",
-  "#2ecc71",
-  "#f39c12",
-  "#9b59b6",
-  "#1abc9c",
-  "#e67e22",
-  "#e91e63",
-  "#00bcd4",
-  "#ff5722",
-  "#8bc34a",
-  "#673ab7",
-  "#ff9800",
-  "#009688",
-  "#cddc39",
-];
-const DEFAULT_TAGS = ["occluded", "blur", "cut-off", "image-error"]; // default tags
-
-const QUALITY_PRESETS = { low: 31, medium: 15, high: 1 }; // extracted frames' jpg quality
+import AnnotationCanvas from "./components/AnnotationCanvas";
+import LeftSidebar from "./components/LeftSidebar";
+import Toolbar from "./components/Toolbar";
+import VideoScrubber from "./components/VideoScrubber";
+import RightSidebar from "./components/RightSidebar";
+import ContextMenu from "./components/ContextMenu";
+import ProjectModal from "./components/ProjectModal";
+import { PALETTE, DEFAULT_TAGS, QUALITY_PRESETS } from "./constants";
 
 function App() {
   // video states
@@ -866,260 +850,35 @@ function App() {
   // UI block
   return (
     <div style={{ display: "flex", height: "100vh", textAlign: "center" }}>
-      {/* left sidebar */}
-
-      {/* class section */}
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          width: "20%",
-          borderRight: "1px solid #ccc",
-          padding: "8px",
-        }}
-      >
-        <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
-          <h3>Classes</h3>
-          <p>Active class: {activeClass ?? "N/A"}</p>{" "}
-          {/* shows selected class */}
-          {/* new class input */}
-          <input
-            type="text"
-            value={newClassName}
-            onChange={(e) => setNewClassName(e.target.value)}
-            onKeyDown={(e) => {
-              e.stopPropagation();
-              if (e.key === "Enter") addClass();
-            }}
-            placeholder="Enter new class"
-            style={{ width: "100%", boxSizing: "border-box" }}
-          />
-          <button onClick={addClass}>Add</button>{" "}
-          {/* button to add new class */}
-          <ul>
-            {/* class list & highlight (upon selection) */}
-            {classes.map((className) => (
-              <li
-                key={className}
-                onClick={() => setActiveClass(className)}
-                style={{
-                  fontWeight: activeClass === className ? "bold" : "normal",
-                  backgroundColor:
-                    activeClass === className ? "#750000" : "transparent",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "6px",
-                  padding: "2px 4px",
-                }}
-              >
-                <input
-                  type="color"
-                  value={classColors[className] ?? "#ffffff"}
-                  onChange={(e) =>
-                    setClassColors((prev) => ({
-                      ...prev,
-                      [className]: e.target.value,
-                    }))
-                  } // lets you pick which colour you want
-                  onClick={(e) => e.stopPropagation()}
-                  style={{
-                    width: 20,
-                    height: 20,
-                    border: "none",
-                    padding: 0,
-                    cursor: "pointer",
-                  }}
-                />
-                {className}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    deleteClass(className);
-                  }}
-                >
-                  x
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-        {/* tag section */}
-        <div
-          style={{ borderTop: "1px solid #ccc", marginTop: 8, paddingTop: 8 }}
-        >
-          <h3>Tags</h3>
-          {/* new tag input */}
-          <input
-            type="text"
-            value={newTagName}
-            onChange={(e) => setNewTagName(e.target.value)}
-            onKeyDown={(e) => {
-              e.stopPropagation();
-              if (e.key === "Enter") addTag();
-            }}
-            placeholder="Add new tag"
-            style={{ width: "100%", boxSizing: "border-box" }}
-          />
-          <button onClick={addTag}>Add</button>
-          {/* tag list & application of tags on bbox */}
-          {selectedBboxIds.length === 0 && (
-            <p style={{ color: "#888", fontSize: 12 }}>
-              Select a bbox to apply tags.
-            </p>
-          )}
-          {selectedBboxIds.length > 1 && (
-            <p style={{ color: "#888", fontSize: 12 }}>
-              {selectedBboxIds.length} boxes selected.
-            </p>
-          )}
-
-          <ul
-            style={{ textAlign: "left", padding: "0 4px", listStyle: "none" }}
-          >
-            {tags.map((tag) => {
-              const selectedBboxes = frameBboxes.filter((b) =>
-                selectedBboxIds.includes(b.id),
-              );
-              const isChecked =
-                selectedBboxes.length > 0 &&
-                selectedBboxes.every((b) => (b.tags ?? []).includes(tag));
-              return (
-                <li
-                  key={tag}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "2px 0",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={isChecked}
-                    disabled={selectedBboxIds.length === 0}
-                    onChange={() =>
-                      selectedBboxIds.forEach((id) => toggleBboxTag(id, tag))
-                    }
-                  />
-                  <span
-                    style={{
-                      background: "#750000",
-                      color: "#FFFFFF",
-                      borderRadius: 3,
-                      padding: "1px 5px",
-                      fontSize: 11,
-                    }}
-                  >
-                    {tag}
-                  </span>
-                  <button
-                    onClick={() => deleteTag(tag)}
-                    style={{ marginLeft: "auto" }}
-                  >
-                    x
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-          {/* model selection */}
-          <div
-            style={{
-              borderTop: "1px solid #ccc",
-              marginTop: 8,
-              paddingTop: 8,
-            }}
-          >
-            <h3>Models</h3>
-            {/* confidence level slider */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                marginTop: 4,
-              }}
-            >
-              <label style={{ fontSize: 11, width: 50, flexShrink: 0 }}>
-                Conf: {yoloConf}
-              </label>
-              <input
-                type="range"
-                min={0.05}
-                max={0.95}
-                step={0.05}
-                value={yoloConf}
-                onChange={(e) => setYoloConf(parseFloat(e.target.value))}
-                style={{ flex: 1, accentColor: "#750000", width: "100%" }}
-              />
-            </div>
-            {/* match threshold slider */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                marginTop: 4,
-              }}
-            >
-              <label style={{ fontSize: 11, width: 50, flexShrink: 0 }}>
-                Match: {matchThresh}
-              </label>
-              <input
-                type="range"
-                min={0.1}
-                max={0.9}
-                step={0.05}
-                value={matchThresh}
-                onChange={(e) => setMatchThresh(parseFloat(e.target.value))}
-                style={{ flex: 1, accentColor: "#750000", width: "100%" }}
-              />
-            </div>
-
-            {/* max lost slider */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                marginTop: 4,
-              }}
-            >
-              <label style={{ fontSize: 11, width: 50, flexShrink: 0 }}>
-                Max lost: {maxLost}f
-              </label>
-              <input
-                type="range"
-                min={60}
-                max={120}
-                step={5}
-                value={maxLost}
-                onChange={(e) => setMaxLost(parseInt(e.target.value))}
-                style={{ flex: 1, accentColor: "#750000", width: "100%" }}
-              />
-            </div>
-            {/* run yolo button */}
-            <button
-              style={{ width: "100%" }}
-              tabIndex={-1}
-              disabled={!videoName || isRunningYolo || isExtracting}
-              onClick={runYolo}
-            >
-              {isRunningYolo ? "Running…" : "Run YOLOv7-tiny"}
-            </button>
-            {/* run SAM button */}
-            <button
-              style={{ width: "100%", marginTop: 4, opacity: 0.4 }}
-              tabIndex={-1}
-              disabled
-            >
-              SAM (coming soon)
-            </button>
-          </div>
-        </div>
-      </div>
+      <LeftSidebar
+        activeClass={activeClass}
+        setActiveClass={setActiveClass}
+        newClassName={newClassName}
+        setNewClassName={setNewClassName}
+        addClass={addClass}
+        classes={classes}
+        classColors={classColors}
+        setClassColors={setClassColors}
+        deleteClass={deleteClass}
+        newTagName={newTagName}
+        setNewTagName={setNewTagName}
+        addTag={addTag}
+        tags={tags}
+        selectedBboxIds={selectedBboxIds}
+        frameBboxes={frameBboxes}
+        toggleBboxTag={toggleBboxTag}
+        deleteTag={deleteTag}
+        yoloConf={yoloConf}
+        setYoloConf={setYoloConf}
+        matchThresh={matchThresh}
+        setMatchThresh={setMatchThresh}
+        maxLost={maxLost}
+        setMaxLost={setMaxLost}
+        videoName={videoName}
+        isRunningYolo={isRunningYolo}
+        isExtracting={isExtracting}
+        runYolo={runYolo}
+      />
 
       {/* center area */}
 
@@ -1133,209 +892,27 @@ function App() {
           textAlign: "center",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-          }}
-        >
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              {/* video input button */}
-              <input
-                type="file"
-                accept="video/*"
-                id="video-input"
-                style={{ display: "none" }}
-                onChange={(e) => uploadVideo(e.target.files[0])}
-              />
-              <button
-                tabIndex={-1}
-                onClick={() => document.getElementById("video-input").click()}
-              >
-                Upload Video
-              </button>
-              {/* frame folder path input */}
-              <div>
-                <input
-                  type="text"
-                  placeholder="Absolute Path"
-                  id="folder-path-input"
-                  style={{ flex: "0 1 auto" }}
-                  size="9"
-                  onKeyDown={(e) => {
-                    e.stopPropagation();
-                    if (e.key === "Enter")
-                      loadFrameFolder(e.target.value.trim());
-                  }}
-                />
-              </div>{" "}
-            </div>
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "row",
-                alignItems: "stretch",
-                gap: 4,
-              }}
-            >
-              {/* import .xml file */}
-              <input
-                type="file"
-                accept=".xml"
-                id="import-xml-input"
-                style={{ display: "none" }}
-                onChange={(e) => {
-                  if (e.target.files[0]) importXML(e.target.files[0]);
-                }}
-              />
-              <button
-                style={{ width: "25%" }}
-                tabIndex={-1}
-                disabled={!videoName}
-                onClick={() =>
-                  document.getElementById("import-xml-input").click()
-                }
-              >
-                Import XML
-              </button>
-              {/* export as .xml button */}
-              <button
-                style={{ width: "25%" }}
-                tabIndex={-1}
-                disabled={!videoName}
-                onClick={exportCVATXML}
-              >
-                Export XML
-              </button>
-              <button
-                tabIndex={-1}
-                disabled={!videoName}
-                onClick={openStatsModal}
-                style={{ width: "25%" }}
-              >
-                Export Stats
-              </button>
-              <button
-                tabIndex={-1}
-                disabled={!videoName}
-                onClick={openChipsModal}
-                style={{ width: "25%" }}
-              >
-                Export Chips
-              </button>
-            </div>
-            <div style={{ display: "flex", justifyContent: "flex-start" }}>
-              {/* save button */}
-              <button
-                style={{ width: "100%" }}
-                tabIndex={-1}
-                disabled={!videoName}
-                onClick={() =>
-                  saveSession(
-                    videoName,
-                    bboxesByFrame,
-                    classes,
-                    classColors,
-                  ).then(() => {
-                    lastSavedRef.current = JSON.stringify(bboxesByFrame);
-                    setShowSaved(true);
-                    setTimeout(() => setShowSaved(false), 5000);
-                  })
-                }
-              >
-                Save
-              </button>
-            </div>
-          </div>
-          {/* saved indicator */}
-          <span
-            style={{
-              fontSize: 12,
-              color: "#009000",
-              opacity: showSaved ? 1 : 0,
-              transition: "opacity 0.5s ease",
-              pointerEvents: "none",
-            }}
-          >
-            ✓ Saved
-          </span>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            {/* mode toggle button */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "flex-end",
-                gap: 8,
-              }}
-            >
-              <h4 style={{ margin: 0 }}> Mode Toggle (W)</h4>
-              <button
-                tabIndex={-1}
-                onClick={() => setMode("select")}
-                style={{
-                  fontWeight: mode === "select" ? "bold" : "normal",
-                  background: mode === "select" ? "#750000" : "",
-                  color: mode === "select" ? "#fff" : "",
-                  padding: "4px",
-                }}
-              >
-                Select
-              </button>
-              <button
-                tabIndex={-1}
-                onClick={() => setMode("draw")}
-                style={{
-                  fontWeight: mode === "draw" ? "bold" : "normal",
-                  background: mode === "draw" ? "#750000" : "",
-                  color: mode === "draw" ? "#fff" : "",
-                  padding: "4px",
-                }}
-              >
-                Draw
-              </button>
-            </div>
-            <div>
-              {/* frame quality toggle */}
-              {videoName && (
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "flex-end",
-                    gap: 8,
-                  }}
-                >
-                  <h4 style={{ margin: 0 }}>Quality</h4>
-                  {["low", "medium", "high"].map((q) => (
-                    <button
-                      key={q}
-                      tabIndex={-1}
-                      disabled={isExtracting}
-                      onClick={() => changeQuality(q)}
-                      style={{
-                        fontWeight: quality === q ? "bold" : "normal",
-                        background: quality === q ? "#750000" : "",
-                        color: quality === q ? "#fff" : "",
-                        padding: "4px",
-                      }}
-                    >
-                      {q.charAt(0).toUpperCase() + q.slice(1)}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            {/* re-extraction message */}
-            {isExtracting && (
-              <p style={{ color: "#750000", margin: "0", fontSize: "16px" }}>
-                Re-extracting frames, please wait...
-              </p>
-            )}
-          </div>
-        </div>
+        <Toolbar
+          videoName={videoName}
+          uploadVideo={uploadVideo}
+          loadFrameFolder={loadFrameFolder}
+          importXML={importXML}
+          exportCVATXML={exportCVATXML}
+          openStatsModal={openStatsModal}
+          openChipsModal={openChipsModal}
+          saveSession={saveSession}
+          bboxesByFrame={bboxesByFrame}
+          classes={classes}
+          classColors={classColors}
+          lastSavedRef={lastSavedRef}
+          setShowSaved={setShowSaved}
+          showSaved={showSaved}
+          mode={mode}
+          setMode={setMode}
+          quality={quality}
+          changeQuality={changeQuality}
+          isExtracting={isExtracting}
+        />
 
         {/* konva stage: image display */}
         {videoName && (
@@ -1361,808 +938,82 @@ function App() {
               outlierBboxIds={outliers.map((o) => o.bbox_id)}
             />{" "}
             {/* calls fastAPI for image */}
-            <div>
-              {/* playback navigation */}
-              <button
-                tabIndex={-1}
-                onClick={() =>
-                  setCurrentFrame((f) => Math.max(0, f - frameInterval))
-                }
-                disabled={currentFrame === 0 || isExtracting}
-              >
-                {"<<"}
-              </button>{" "}
-              {/* interval back */}
-              <button
-                tabIndex={-1}
-                onClick={prevFrame}
-                disabled={currentFrame === 0 || isExtracting}
-              >
-                {"<"}
-              </button>{" "}
-              {/* back button */}
-              <span>
-                {" "}
-                Frame {currentFrame + 1} / {frameCount}{" "}
-              </span>
-              <button
-                tabIndex={-1}
-                onClick={nextFrame}
-                disabled={currentFrame === frameCount - 1 || isExtracting}
-              >
-                {">"}
-              </button>{" "}
-              {/* forward button */}
-              <button
-                tabIndex={-1}
-                onClick={() =>
-                  setCurrentFrame((f) =>
-                    Math.min(frameCount - 1, f + frameInterval),
-                  )
-                }
-                disabled={currentFrame === frameCount - 1 || isExtracting}
-              >
-                {">>"}{" "}
-              </button>{" "}
-              {/* interval forward */}
-            </div>
-            <div>
-              {/* frame interval setter */}
-              <label>Interval: </label>
-              <input
-                type="number"
-                value={frameInterval}
-                min={1}
-                onChange={(e) => setFrameInterval(Number(e.target.value))}
-                style={{ width: "50px" }}
-              />
-              <span> frames</span>
-            </div>
-            {/* play/pause button */}
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <button
-                tabIndex={-1}
-                onClick={() => setIsPlaying((p) => !p)}
-                disabled={isExtracting}
-              >
-                {isPlaying ? "Pause" : "Play"}
-                {/* video slider */}
-              </button>
-              {/* video slider with outlier markers */}
-              <div style={{ flex: 1, position: "relative" }}>
-                {/* outlier tick marks */}
-                {outliers.map((o, i) => (
-                  <div
-                    key={i}
-                    onClick={() => setCurrentFrame(o.frame_idx)}
-                    style={{
-                      position: "absolute",
-                      left: `${(o.frame_idx / (frameCount - 1)) * 100}%`,
-                      top: 0,
-                      width: 3,
-                      height: "100%",
-                      background: OUTLIER_COLOR,
-                      opacity: 0.8,
-                      cursor: "pointer",
-                      zIndex: 1,
-                      transform: "translateX(-50%)",
-                    }}
-                    title={`${o.timestamp} — ${o.class} (${
-                      o.reason === "orientation"
-                        ? "⚠ wrong orientation"
-                        : o.reason === "aspect_ratio"
-                          ? "⚠ unusual shape"
-                          : "⚠ rare class"
-                    } — {o.detail})`}
-                  />
-                ))}
-                <input
-                  type="range"
-                  min={0}
-                  max={frameCount - 1}
-                  value={currentFrame}
-                  onChange={(e) => setCurrentFrame(Number(e.target.value))}
-                  style={{
-                    width: "100%",
-                    accentColor: "#750000",
-                    position: "relative",
-                    zIndex: 2,
-                  }}
-                  disabled={isExtracting}
-                />
-              </div>
-              <span>
-                {formatTime(currentFrame / fps)} /{" "}
-                {formatTime(frameCount / fps)}
-              </span>
-            </div>
+            <VideoScrubber
+              currentFrame={currentFrame}
+              frameCount={frameCount}
+              frameInterval={frameInterval}
+              setFrameInterval={setFrameInterval}
+              setCurrentFrame={setCurrentFrame}
+              prevFrame={prevFrame}
+              nextFrame={nextFrame}
+              isPlaying={isPlaying}
+              setIsPlaying={setIsPlaying}
+              isExtracting={isExtracting}
+              fps={fps}
+              outliers={outliers}
+              OUTLIER_COLOR={OUTLIER_COLOR}
+              formatTime={formatTime}
+            />
           </div>
         )}
       </div>
 
-      {/* right sidebar */}
-      <div
-        style={{
-          width: "20%",
-          borderLeft: "1px solid #ccc",
-          padding: "8px",
-          display: "flex",
-          flexDirection: "column",
-          height: "100vh",
-          overflowY: "hidden",
-        }}
-      >
-        {/* annotations list */}
-        <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
-          <h3 style={{ margin: 0 }}>Annotations</h3>
-          {frameBboxes.length === 0 ? (
-            <p style={{ color: "#aaa" }}>No annotations yet.</p>
-          ) : (
-            <ul style={{ textAlign: "left", padding: "0 16px", margin: 0 }}>
-              {frameBboxes.map((b, i) => (
-                <li
-                  key={b.id}
-                  title={b.id}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    openContextMenu(e.clientX, e.clientY, b.id);
-                  }}
-                  style={{
-                    background: outliers.some((o) => o.bbox_id === b.id)
-                      ? `${OUTLIER_COLOR}22` // subtle highlight if flagged
-                      : selectedBboxIds.includes(b.id)
-                        ? "#333"
-                        : "transparent",
-                    border: outliers.some((o) => o.bbox_id === b.id)
-                      ? `1px solid ${OUTLIER_COLOR}`
-                      : "1px solid transparent",
-                    borderRadius: 3,
-                    marginBottom: 2,
-                  }}
-                >
-                  {i + 1}. {b.className}{" "}
-                  <span style={{ color: "#888", fontSize: 11 }}>
-                    {b.trackId !== null && b.trackId !== undefined
-                      ? `#${b.trackId}`
-                      : `#${b.id.slice(0, 6)}`}
-                  </span>
-                  {outliers.some((o) => o.bbox_id === b.id) && (
-                    <span
-                      style={{
-                        color: OUTLIER_COLOR,
-                        fontSize: 10,
-                        marginLeft: 4,
-                      }}
-                    >
-                      ⚠
-                    </span>
-                  )}
-                  {(b.tags ?? []).map((tag) => (
-                    <span
-                      key={tag}
-                      style={{
-                        background: "#750000",
-                        color: "#FFFFFF",
-                        borderRadius: 3,
-                        padding: "1px 5px",
-                        fontSize: 10,
-                        marginLeft: 3,
-                      }}
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                  <button
-                    onClick={() => deleteBbox(b.id)}
-                    style={{ marginLeft: 4 }}
-                  >
-                    x
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+      <RightSidebar
+        frameBboxes={frameBboxes}
+        selectedBboxIds={selectedBboxIds}
+        outliers={outliers}
+        OUTLIER_COLOR={OUTLIER_COLOR}
+        currentFrame={currentFrame}
+        setCurrentFrame={setCurrentFrame}
+        openContextMenu={openContextMenu}
+        deleteBbox={deleteBbox}
+        sigmaThresh={sigmaThresh}
+        setSigmaThresh={setSigmaThresh}
+        rarePctThresh={rarePctThresh}
+        setRarePctThresh={setRarePctThresh}
+        videoName={videoName}
+        isScanning={isScanning}
+        scanOutliers={scanOutliers}
+      />
 
-        {/* outlier detection section */}
-        <div
-          style={{
-            flex: 1,
-            overflowY: "auto",
-            minHeight: 0,
-            borderTop: "1px solid #ccc",
-            paddingTop: 8,
-            width: "100%",
-          }}
-        >
-          <h3 style={{ margin: "0 0 8px 0" }}>Outlier Detection</h3>
+      <ContextMenu
+        contextMenu={contextMenu}
+        classes={classes}
+        classColors={classColors}
+        tags={tags}
+        frameBboxes={frameBboxes}
+        changeClass={changeClass}
+        toggleBboxTag={toggleBboxTag}
+        deleteBbox={deleteBbox}
+        setContextMenu={setContextMenu}
+      />
 
-          {/* sigma slider */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              marginBottom: 4,
-            }}
-          >
-            <label
-              style={{
-                fontSize: 11,
-                width: 50,
-                flexShrink: 0,
-              }}
-            >
-              σ thresh: {sigmaThresh.toFixed(1)}
-            </label>
-            <input
-              type="range"
-              min={1.5}
-              max={3.0}
-              step={0.1}
-              value={sigmaThresh}
-              onChange={(e) => setSigmaThresh(parseFloat(e.target.value))}
-              style={{ flex: 1, accentColor: "#750000" }}
-            />
-          </div>
-
-          {/* rare class slider */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              marginBottom: 8,
-            }}
-          >
-            <label
-              style={{
-                fontSize: 11,
-                width: 50,
-                flexShrink: 0,
-              }}
-            >
-              Rare: ≤{rarePctThresh.toFixed(1)}%
-            </label>
-            <input
-              type="range"
-              min={0.1}
-              max={5.0}
-              step={0.1}
-              value={rarePctThresh}
-              onChange={(e) => setRarePctThresh(parseFloat(e.target.value))}
-              style={{ flex: 1, accentColor: "#750000" }}
-            />
-          </div>
-
-          {/* scan button */}
-          <button
-            style={{ width: "100%", marginBottom: 8 }}
-            tabIndex={-1}
-            disabled={!videoName || isScanning}
-            onClick={scanOutliers}
-          >
-            {isScanning ? "Scanning..." : `Scan for Outliers`}
-          </button>
-
-          {/* outlier list */}
-          {outliers.length === 0 ? (
-            <p style={{ color: "#888", fontSize: 11, margin: 0 }}>
-              {isScanning ? "" : "No outliers detected."}
-            </p>
-          ) : (
-            <>
-              <p
-                style={{
-                  color: OUTLIER_COLOR,
-                  fontSize: 11,
-                  margin: "0 0 4px 0",
-                }}
-              >
-                {outliers.length} outlier{outliers.length > 1 ? "s" : ""} found
-              </p>
-              <ul
-                style={{
-                  listStyle: "none",
-                  padding: 0,
-                  margin: 0,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 4,
-                }}
-              >
-                {outliers.map((o, i) => (
-                  <li
-                    key={i}
-                    onClick={() => setCurrentFrame(o.frame_idx)}
-                    style={{
-                      cursor: "pointer",
-                      padding: "4px 6px",
-                      borderRadius: 3,
-                      border: `1px solid ${OUTLIER_COLOR}44`,
-                      background:
-                        currentFrame === o.frame_idx
-                          ? `${OUTLIER_COLOR}22`
-                          : "transparent",
-                      fontSize: 11,
-                    }}
-                    onMouseEnter={(e) =>
-                      (e.currentTarget.style.background = `${OUTLIER_COLOR}22`)
-                    }
-                    onMouseLeave={(e) =>
-                      (e.currentTarget.style.background =
-                        currentFrame === o.frame_idx
-                          ? `${OUTLIER_COLOR}22`
-                          : "transparent")
-                    }
-                  >
-                    <span style={{ color: OUTLIER_COLOR, fontWeight: "bold" }}>
-                      {o.timestamp}
-                    </span>{" "}
-                    <span style={{ color: "#ccc" }}>{o.class}</span>
-                    <div style={{ color: "#666", fontSize: 10 }}>
-                      {o.reason === "orientation"
-                        ? "⚠ wrong orientation"
-                        : o.reason === "aspect_ratio"
-                          ? "⚠ unusual shape"
-                          : "⚠ rare class"}{" "}
-                      — {o.detail}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </div>
-      </div>
-      {/* context menu style */}
-      {contextMenu && (
-        <div
-          style={{
-            position: "fixed",
-            top: contextMenu.y,
-            left: contextMenu.x,
-            background: "#1a1a1a",
-            border: "1px solid #555",
-            borderRadius: 4,
-            zIndex: 1000,
-            minWidth: 140,
-            boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
-          }}
-          onClick={(e) => e.stopPropagation()} // prevent closing when clicking inside menu
-        >
-          <div
-            style={{
-              padding: "4px 10px",
-              color: "#888",
-              fontSize: 11,
-              borderBottom: "1px solid #333",
-            }}
-          >
-            {" "}
-            {/* context menu text color */}
-            Change class:
-          </div>
-          {/* class change toggle */}
-          {classes.map((cls) => (
-            <div
-              key={cls}
-              onClick={() => {
-                changeClass(contextMenu.bboxId, cls);
-                setContextMenu(null);
-              }}
-              style={{
-                padding: "6px 12px",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "#333")} // color of background of mouse hover
-              onMouseLeave={(e) =>
-                (e.currentTarget.style.background = "transparent")
-              }
-            >
-              <span
-                style={{
-                  width: 10,
-                  height: 10,
-                  borderRadius: 2,
-                  background: classColors[cls] ?? "#fff",
-                  display: "inline-block",
-                }}
-              />
-              {cls}
-            </div>
-          ))}
-          {/* tag toggle */}
-          <div
-            style={{
-              borderTop: "1px solid #333",
-              borderBottom: "1px solid #333",
-            }}
-          >
-            <div style={{ padding: "4px 10px", color: "#888", fontSize: 11 }}>
-              Tags:
-            </div>
-            {tags.map((tag) => {
-              const bbox = frameBboxes.find((b) => b.id === contextMenu.bboxId);
-              const isChecked = bbox ? (bbox.tags ?? []).includes(tag) : false;
-              return (
-                <div
-                  key={tag}
-                  onClick={() => toggleBboxTag(contextMenu.bboxId, tag)}
-                  style={{
-                    padding: "4px 12px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    cursor: "pointer",
-                  }}
-                  onMouseEnter={(e) =>
-                    (e.currentTarget.style.background = "#333")
-                  }
-                  onMouseLeave={(e) =>
-                    (e.currentTarget.style.background = "transparent")
-                  }
-                >
-                  <input
-                    type="checkbox"
-                    checked={isChecked}
-                    onChange={() => {}}
-                    style={{ pointerEvents: "none" }}
-                  />
-                  {tag}
-                </div>
-              );
-            })}
-          </div>
-          <div style={{ borderTop: "1px solid #333" }}>
-            {/* delete annotation button */}
-            <div
-              onClick={() => {
-                deleteBbox(contextMenu.bboxId);
-                setContextMenu(null);
-              }}
-              style={{
-                padding: "6px 12px",
-                cursor: "pointer",
-                color: "#e74c3c",
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "#333")}
-              onMouseLeave={(e) =>
-                (e.currentTarget.style.background = "transparent")
-              }
-            >
-              Delete
-            </div>
-          </div>
-        </div>
-      )}
       {/* video selection for export to csv */}
-      {showStatsModal && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.6)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 2000,
-          }}
-          onClick={() => setShowStatsModal(false)}
-        >
-          <div
-            style={{
-              background: "#1a1a1a",
-              border: "1px solid #555",
-              borderRadius: 8,
-              padding: 24,
-              minWidth: 420,
-              maxHeight: "70vh",
-              display: "flex",
-              flexDirection: "column",
-              gap: 12,
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 style={{ margin: 0 }}>Export Stats</h3>
-            {isLoadingProjects ? (
-              <p style={{ color: "#888" }}>Loading projects...</p>
-            ) : projectsList.length === 0 ? (
-              <p style={{ color: "#888" }}>No saved projects found.</p>
-            ) : (
-              <>
-                {/* select all toggle */}
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    borderBottom: "1px solid #333",
-                    paddingBottom: 8,
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedProjects.length === projectsList.length}
-                    onChange={() =>
-                      setSelectedProjects(
-                        selectedProjects.length === projectsList.length
-                          ? []
-                          : projectsList.map((p) => p.video_name),
-                      )
-                    }
-                  />
-                  <span style={{ fontWeight: "bold" }}>
-                    Select all ({projectsList.length})
-                  </span>
-                </div>
+      <ProjectModal
+        show={showStatsModal}
+        setShow={setShowStatsModal}
+        mode="stats"
+        isLoadingProjects={isLoadingProjects}
+        projectsList={projectsList}
+        selectedProjects={selectedProjects}
+        setSelectedProjects={setSelectedProjects}
+        toggleProject={toggleProject}
+        exportSelectedStats={exportSelectedStats}
+      />
 
-                {/* video/project list */}
-                <div
-                  style={{
-                    overflowY: "auto",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 6,
-                  }}
-                >
-                  {projectsList.map((p) => (
-                    <label
-                      key={p.video_name}
-                      style={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        gap: 10,
-                        padding: "6px 8px",
-                        borderRadius: 4,
-                        cursor: "pointer",
-                        textAlign: "left",
-                        background: selectedProjects.includes(p.video_name)
-                          ? "#2a2a2a"
-                          : "transparent",
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedProjects.includes(p.video_name)}
-                        onChange={() => toggleProject(p.video_name)}
-                        style={{ marginTop: 2 }}
-                      />
-                      <div
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 2,
-                        }}
-                      >
-                        <span style={{ fontWeight: "bold", fontSize: 13 }}>
-                          {p.video_name}
-                        </span>
-                        <span style={{ color: "#888", fontSize: 11 }}>
-                          {p.bbox_count} bboxes · {p.class_count} classes ·{" "}
-                          {p.frame_count} annotated frames
-                        </span>
-                        <span style={{ color: "#555", fontSize: 10 }}>
-                          {p.classes.join(", ") || "no classes"}
-                        </span>
-                        <span style={{ color: "#444", fontSize: 10 }}>
-                          Saved:{" "}
-                          {p.saved_at !== "unknown"
-                            ? new Date(p.saved_at).toLocaleString()
-                            : "unknown"}
-                        </span>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {/* footer */}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                gap: 8,
-                borderTop: "1px solid #333",
-                paddingTop: 12,
-              }}
-            >
-              <button tabIndex={-1} onClick={() => setShowStatsModal(false)}>
-                Cancel
-              </button>
-              <button
-                tabIndex={-1}
-                disabled={selectedProjects.length === 0}
-                onClick={async () => {
-                  await exportSelectedStats();
-                  setShowStatsModal(false);
-                }}
-                style={{
-                  background: "#750000",
-                  color: "#fff",
-                  border: "none",
-                  padding: "6px 16px",
-                  borderRadius: 4,
-                  cursor: "pointer",
-                }}
-              >
-                Export{" "}
-                {selectedProjects.length > 0
-                  ? `(${selectedProjects.length})`
-                  : ""}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       {/* video selection for chip export */}
-      {showChipsModal && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.6)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 2000,
-          }}
-          onClick={() => setShowChipsModal(false)}
-        >
-          <div
-            style={{
-              background: "#1a1a1a",
-              border: "1px solid #555",
-              borderRadius: 8,
-              padding: 24,
-              minWidth: 420,
-              maxHeight: "70vh",
-              display: "flex",
-              flexDirection: "column",
-              gap: 12,
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 style={{ margin: 0 }}>Export Chips</h3>
-            {isLoadingProjects ? (
-              <p style={{ color: "#888" }}>Loading projects...</p>
-            ) : projectsList.length === 0 ? (
-              <p style={{ color: "#888" }}>No saved projects found.</p>
-            ) : (
-              <>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    borderBottom: "1px solid #333",
-                    paddingBottom: 8,
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedProjects.length === projectsList.length}
-                    onChange={() =>
-                      setSelectedProjects(
-                        selectedProjects.length === projectsList.length
-                          ? []
-                          : projectsList.map((p) => p.video_name),
-                      )
-                    }
-                  />
-                  <span style={{ fontWeight: "bold" }}>
-                    Select all ({projectsList.length})
-                  </span>
-                </div>
-                <div
-                  style={{
-                    overflowY: "auto",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 6,
-                  }}
-                >
-                  {projectsList.map((p) => (
-                    <label
-                      key={p.video_name}
-                      style={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        gap: 10,
-                        padding: "6px 8px",
-                        borderRadius: 4,
-                        cursor: "pointer",
-                        textAlign: "left",
-                        background: selectedProjects.includes(p.video_name)
-                          ? "#2a2a2a"
-                          : "transparent",
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedProjects.includes(p.video_name)}
-                        onChange={() => toggleProject(p.video_name)}
-                        style={{ marginTop: 2 }}
-                      />
-                      <div
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 2,
-                        }}
-                      >
-                        <span style={{ fontWeight: "bold", fontSize: 13 }}>
-                          {p.video_name}
-                        </span>
-                        <span style={{ color: "#888", fontSize: 11 }}>
-                          {p.bbox_count} bboxes · {p.class_count} classes ·{" "}
-                          {p.frame_count} annotated frames
-                        </span>
-                        <span style={{ color: "#555", fontSize: 10 }}>
-                          {p.classes.join(", ") || "no classes"}
-                        </span>
-                        <span style={{ color: "#444", fontSize: 10 }}>
-                          Saved:{" "}
-                          {p.saved_at !== "unknown"
-                            ? new Date(p.saved_at).toLocaleString()
-                            : "unknown"}
-                        </span>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              </>
-            )}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                alignItems: "center",
-                gap: 8,
-                borderTop: "1px solid #333",
-                paddingTop: 12,
-              }}
-            >
-              {isExportingChips && (
-                <span style={{ fontSize: 12, color: "#888" }}>
-                  Exporting chips, please wait...
-                </span>
-              )}
-              <button
-                tabIndex={-1}
-                onClick={() => setShowChipsModal(false)}
-                disabled={isExportingChips}
-              >
-                Cancel
-              </button>
-              <button
-                tabIndex={-1}
-                disabled={selectedProjects.length === 0 || isExportingChips}
-                onClick={async () => {
-                  await exportChips();
-                  setShowChipsModal(false);
-                }}
-                style={{
-                  background: "#750000",
-                  color: "#fff",
-                  border: "none",
-                  padding: "6px 16px",
-                  borderRadius: 4,
-                  cursor: "pointer",
-                }}
-              >
-                {isExportingChips
-                  ? "Exporting..."
-                  : `Export (${selectedProjects.length})`}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ProjectModal
+        show={showChipsModal}
+        setShow={setShowChipsModal}
+        mode="chips"
+        isLoadingProjects={isLoadingProjects}
+        projectsList={projectsList}
+        selectedProjects={selectedProjects}
+        setSelectedProjects={setSelectedProjects}
+        toggleProject={toggleProject}
+        exportChips={exportChips}
+        isExportingChips={isExportingChips}
+      />
     </div>
   );
 }
