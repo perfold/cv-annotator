@@ -18,7 +18,7 @@ INPUT_DIR    = DATA_DIR / "input"
 OUTPUT_DIR   = DATA_DIR / "output"
 MODELS_DIR   = BASE_DIR / "models"
 YOLOV7_PATH  = MODELS_DIR / "yolov7"
-YOLO_WEIGHTS = MODELS_DIR / "yolov7-tiny.pt"
+YOLO_WEIGHTS = MODELS_DIR / "yolov7-tiny-visdrone.pt"
 
 # check if repo and model are in the right dir
 if not YOLOV7_PATH.exists():
@@ -446,19 +446,6 @@ async def export_chips(payload: dict = Body(...)):
 
     return {"total_chips": total_chips, "skipped_videos": skipped}
 
-CLASS_ORIENTATION_RULES = { # aspect ratio threshold for what is considered an outlier
-    "person": {"max_ratio": 1.0}, # if your aspect ratio is >1:1 aka wider than tall, probably false alarm for person
-
-    "car": {"min_ratio": 1.5}, # min ratio because these vehicles are horizontal on video
-    "truck": {"min_ratio": 2.0},
-    "bus": {"min_ratio": 2.5},
-    "train": {"min_ratio": 3.0},
-    "motorcycle": {"min_ratio": 1.2},
-    "bicycle": {"min_ratio": 1.5},
-    "boat": {"min_ratio": 1.5},
-    "airplane": {"min_ratio": 2.0},
-}
-
 # add annotation to outlier list
 def add_outlier(outliers, flagged_ids, frame_idx, bbox_id, cls, reason, detail, timestamp):
     key = (bbox_id, reason)
@@ -518,27 +505,7 @@ async def detect_outliers(video_name: str, payload: dict = Body(...)):
     for cls, entries in class_ratios.items():
         ratios = [r for _, _, r in entries] # get list of ratios
 
-        # rule 1: fixed orientation/ratio check
-        orientation_rule = None
-        for keyword, rule in CLASS_ORIENTATION_RULES.items():
-            if keyword in cls.lower():
-                orientation_rule = rule
-                break
-
-        if orientation_rule:
-            for frame_idx, bbox_id, ratio in entries:
-                seconds   = frame_idx / fps
-                timestamp = f"{int(seconds // 3600):02d}:{int((seconds % 3600) // 60):02d}:{int(seconds % 60):02d}"
-
-                if "max_ratio" in orientation_rule and ratio > orientation_rule["max_ratio"]: # if person wider than tall, probably not person (outlier/false alarm)
-                    add_outlier(outliers, flagged_ids, frame_idx, bbox_id, cls, "orientation",
-                        f"w/h={ratio:.2f} exceeds max {orientation_rule['max_ratio']}", timestamp)
-                    
-                if "min_ratio" in orientation_rule and ratio < orientation_rule["min_ratio"]: # if vehicle taller than wide, probably wrong too
-                    add_outlier(outliers, flagged_ids, frame_idx, bbox_id, cls, "orientation",
-                        f"w/h={ratio:.2f} below min {orientation_rule['min_ratio']}", timestamp)
-
-        # rule 2: statistical aspect ratio outlier
+        # rule 1: statistical aspect ratio outlier
         if len(ratios) >= 10: # std not useful if smaller
             mean     = sum(ratios) / len(ratios)
             variance = sum((r - mean) ** 2 for r in ratios) / len(ratios)
@@ -556,7 +523,7 @@ async def detect_outliers(video_name: str, payload: dict = Body(...)):
                         add_outlier(outliers, flagged_ids, frame_idx, bbox_id, cls, "aspect_ratio",
                             f"w/h={ratio:.2f} (mean={mean:.2f}, {abs(ratio - mean) / std:.1f}σ away)", timestamp)
 
-        # rule 3: rare class
+        # rule 2: rare class
         frame_pct = len(class_frame_sets[cls]) / total_annotated_frames * 100
         if frame_pct <= rare_pct_thresh: # if seen too little times, probably outlier too
             for frame_idx, bbox_id, _ in entries:

@@ -11,14 +11,24 @@ annotation-tool/
 ├── frontend/                               React + Vite
 │   └── src/
 │       ├── App.jsx
-│       ├── AnnotationCanvas.jsx
-│       └── main.jsx
+│       ├── store.js                        Zustand store
+│       ├── constants.js                    Shared constants (palette, default tags, quality presets)
+│       ├── main.jsx
+│       └── components/
+│           ├── AnnotationCanvas.jsx        Konva canvas: drawing, selecting, dragging bboxes
+│           ├── LeftSidebar.jsx             Classes, tags, and model
+│           ├── Toolbar.jsx                 Upload, import/export, save, mode toggle, quality
+│           ├── VideoScrubber.jsx           Playback controls and frame scrubber
+│           ├── RightSidebar.jsx            Annotation list and outlier detection panel
+│           ├── ContextMenu.jsx             Right-click floating menu
+│           └── ProjectModal.jsx            Project picker for Export Stats and Export Chips
 ├── backend/                                FastAPI + Uvicorn
 │   ├── main.py
+│   ├── bytetrack.py
 │   └── requirements.txt
 ├── models/
 │   ├── yolov7/                             Trimmed YOLOv7 repo
-│   └── yolov7-tiny.pt                      YOLOv7-tiny weights (not committed, see setup)
+│   └── yolov7-tiny-visdrone.pt             Finetuned VisDrone weights
 ├── data/
 │   ├── input/                              uploaded videos
 │   └── output/                             extracted frames + annotations per video
@@ -39,15 +49,13 @@ annotation-tool/
 
 ## Setup
 
-### 1. Model Setup (one-time)
+### 1. Model Setup
 
-The YOLOv7-tiny weights are not included in the repo as they are too large. Download them and place in the `models/` folder:
+The finetuned YOLOv7-tiny weights (`yolov7-tiny-visdrone.pt`) are included in the `models/` folder and trained on the [VisDrone2019](https://github.com/VisDrone/VisDrone-Dataset) dataset. No download needed.
 
-```
-wget https://github.com/WongKinYiu/yolov7/releases/download/v0.1/yolov7-tiny.pt -O models/yolov7-tiny.pt
-```
+The model is a finetuned version of [YOLOv7-tiny](https://github.com/WongKinYiu/yolov7) by WongKinYiu, trained to detect the following VisDrone classes: `pedestrian`, `people`, `bicycle`, `car`, `van`, `truck`, `tricycle`, `awning-tricycle`, `bus`, `motor`, `others`.
 
-The models/yolov7 folder (trimmed) is already included in this repo.
+The trimmed YOLOv7 repo is also already included at `models/yolov7/`.
 
 ### 2. Install Dependencies & Run
 
@@ -91,11 +99,10 @@ Flagged bboxes are highlighted in **amber (#ffcc00)** on the canvas and marked w
 
 **Detection rules:**
 
-| Rule         | What it checks                                                                                                                                | Configurable                              |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| Orientation  | Flags bboxes whose w/h ratio violates the expected orientation for known COCO classes (e.g. `person` wider than tall, `car` taller than wide) | No - thresholds are fixed per class       |
-| Aspect ratio | Flags bboxes whose w/h ratio is statistically unusual compared to other bboxes of the same class in the video (requires ≥10 samples)          | σ threshold slider (1.5–3.0, default 2.0) |
-| Rare class   | Flags all bboxes of a class that appears in suspiciously few frames - likely a misclick or misclassification                                  | Rare % slider (0.1–5.0%, default 1.0%)    |
+| Rule         | What it checks                                                                                                                       | Configurable                              |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------- |
+| Aspect ratio | Flags bboxes whose w/h ratio is statistically unusual compared to other bboxes of the same class in the video (requires ≥10 samples) | σ threshold slider (1.5–3.0, default 2.0) |
+| Rare class   | Flags all bboxes of a class that appears in suspiciously few frames - likely a misclick or misclassification                         | Rare % slider (0.1–5.0%, default 1.0%)    |
 
 ---
 
@@ -182,6 +189,7 @@ Flagged bboxes are highlighted in **amber (#ffcc00)** on the canvas and marked w
 - [ ] Select a manually drawn bbox, then find all similar instances of it in the subsequent frames and populate the bbox via template-matching or similar algorithms.
 - [ ] Select an existing bbox, mark it as a FA, then auto remove all similar instances in subsequent frames via template-matching or similar algorithms.
 - [x] Outlier detection algorithm based on annotated classes to identify which annotations for that class could be wrong.
+- [ ] Embedding-based outlier detection
 - [ ] Use (any variant of) SAM (https://github.com/facebookresearch/segment-anything) to tighten bounding boxes on demand for all bboxes in a frame.
 - [x] Summarise the class label distribution stats for each project/ across all projects and export in csv format.
 - [x] Extract and export bbox target chips by saving them in respective class folders.
