@@ -1,15 +1,15 @@
-function ContextMenu({
-  contextMenu,
-  classes,
-  classColors,
-  tags,
-  frameBboxes,
-  changeClass,
-  toggleBboxTag,
-  deleteBbox,
-  setContextMenu,
-}) {
+import useStore from "../store";
+
+function ContextMenu() {
+  const {
+    contextMenu, classes, classColors, tags, bboxesByFrame, currentFrame,
+    changeClass, toggleBboxTag, deleteBbox,
+    
+  } = useStore((s) => s);
+
   if (!contextMenu) return null;
+
+  const frameBboxes = bboxesByFrame[currentFrame] ?? [];
 
   return (
     <>
@@ -46,7 +46,7 @@ function ContextMenu({
             key={cls}
             onClick={() => {
               changeClass(contextMenu.bboxId, cls);
-              setContextMenu(null);
+              useStore.setState({ contextMenu: null });
             }}
             style={{
               padding: "6px 12px",
@@ -119,7 +119,7 @@ function ContextMenu({
           <div
             onClick={() => {
               deleteBbox(contextMenu.bboxId);
-              setContextMenu(null);
+              useStore.setState({ contextMenu: null });
             }}
             style={{
               padding: "6px 12px",

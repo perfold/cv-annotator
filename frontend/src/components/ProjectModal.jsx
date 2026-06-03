@@ -1,16 +1,12 @@
-function ProjectModal({
-  show,
-  setShow,
-  mode, // "stats" | "chips"
-  isLoadingProjects,
-  projectsList,
-  selectedProjects,
-  setSelectedProjects,
-  toggleProject,
-  exportSelectedStats,
-  exportChips,
-  isExportingChips,
-}) {
+import useStore from "../store";
+
+function ProjectModal({ show, setShow, mode }) {
+  const {
+    isLoadingProjects, projectsList, selectedProjects, isExportingChips,
+    toggleProject, exportSelectedStats, exportChips,
+    
+  } = useStore((s) => s);
+
   if (!show) return null;
 
   const isChips = mode === "chips";
@@ -65,11 +61,12 @@ function ProjectModal({
                   type="checkbox"
                   checked={selectedProjects.length === projectsList.length}
                   onChange={() =>
-                    setSelectedProjects(
-                      selectedProjects.length === projectsList.length
-                        ? []
-                        : projectsList.map((p) => p.video_name),
-                    )
+                    useStore.setState({
+                      selectedProjects:
+                        selectedProjects.length === projectsList.length
+                          ? []
+                          : projectsList.map((p) => p.video_name),
+                    })
                   }
                 />
                 <span style={{ fontWeight: "bold" }}>

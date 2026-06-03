@@ -1,28 +1,29 @@
-function VideoScrubber({
-  currentFrame,
-  frameCount,
-  frameInterval,
-  setFrameInterval,
-  setCurrentFrame,
-  prevFrame,
-  nextFrame,
-  isPlaying,
-  setIsPlaying,
-  isExtracting,
-  fps,
-  outliers,
-  OUTLIER_COLOR,
-  formatTime,
-}) {
+import useStore from "../store";
+
+function VideoScrubber({ formatTime, prevFrame, nextFrame }) {
+  const {
+    currentFrame,
+    frameCount,
+    frameInterval,
+    isPlaying,
+    isExtracting,
+    fps,
+    outliers,
+    OUTLIER_COLOR,
+  } = useStore((s) => s);
+
+  const OUTLIER_COLOR_VAL = "#ffcc00";
+
   return (
     <>
-      {/* calls fastAPI for image */}
       <div>
         {/* playback navigation */}
         <button
           tabIndex={-1}
           onClick={() =>
-            setCurrentFrame((f) => Math.max(0, f - frameInterval))
+            useStore.setState({
+              currentFrame: Math.max(0, currentFrame - frameInterval),
+            })
           }
           disabled={currentFrame === 0 || isExtracting}
         >
@@ -52,9 +53,12 @@ function VideoScrubber({
         <button
           tabIndex={-1}
           onClick={() =>
-            setCurrentFrame((f) =>
-              Math.min(frameCount - 1, f + frameInterval),
-            )
+            useStore.setState({
+              currentFrame: Math.min(
+                frameCount - 1,
+                currentFrame + frameInterval,
+              ),
+            })
           }
           disabled={currentFrame === frameCount - 1 || isExtracting}
         >
@@ -69,7 +73,9 @@ function VideoScrubber({
           type="number"
           value={frameInterval}
           min={1}
-          onChange={(e) => setFrameInterval(Number(e.target.value))}
+          onChange={(e) =>
+            useStore.setState({ frameInterval: Number(e.target.value) })
+          }
           style={{ width: "50px" }}
         />
         <span> frames</span>
@@ -78,7 +84,7 @@ function VideoScrubber({
       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
         <button
           tabIndex={-1}
-          onClick={() => setIsPlaying((p) => !p)}
+          onClick={() => useStore.setState({ isPlaying: !isPlaying })}
           disabled={isExtracting}
         >
           {isPlaying ? "Pause" : "Play"}
@@ -90,14 +96,14 @@ function VideoScrubber({
           {outliers.map((o, i) => (
             <div
               key={i}
-              onClick={() => setCurrentFrame(o.frame_idx)}
+              onClick={() => useStore.setState({ currentFrame: o.frame_idx })}
               style={{
                 position: "absolute",
                 left: `${(o.frame_idx / (frameCount - 1)) * 100}%`,
                 top: 0,
                 width: 3,
                 height: "100%",
-                background: OUTLIER_COLOR,
+                background: OUTLIER_COLOR_VAL,
                 opacity: 0.8,
                 cursor: "pointer",
                 zIndex: 1,
@@ -117,7 +123,9 @@ function VideoScrubber({
             min={0}
             max={frameCount - 1}
             value={currentFrame}
-            onChange={(e) => setCurrentFrame(Number(e.target.value))}
+            onChange={(e) =>
+              useStore.setState({ currentFrame: Number(e.target.value) })
+            }
             style={{
               width: "100%",
               accentColor: "#750000",
@@ -128,8 +136,7 @@ function VideoScrubber({
           />
         </div>
         <span>
-          {formatTime(currentFrame / fps)} /{" "}
-          {formatTime(frameCount / fps)}
+          {formatTime(currentFrame / fps)} / {formatTime(frameCount / fps)}
         </span>
       </div>
     </>

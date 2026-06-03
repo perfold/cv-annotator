@@ -1,20 +1,15 @@
-function RightSidebar({
-  frameBboxes,
-  selectedBboxIds,
-  outliers,
-  OUTLIER_COLOR,
-  currentFrame,
-  setCurrentFrame,
-  openContextMenu,
-  deleteBbox,
-  sigmaThresh,
-  setSigmaThresh,
-  rarePctThresh,
-  setRarePctThresh,
-  videoName,
-  isScanning,
-  scanOutliers,
-}) {
+import useStore from "../store";
+
+function RightSidebar({ OUTLIER_COLOR }) {
+  const {
+    bboxesByFrame, currentFrame, selectedBboxIds, outliers,
+    isScanning, sigmaThresh, rarePctThresh, videoName,
+    openContextMenu, deleteBbox, scanOutliers,
+    
+  } = useStore((s) => s);
+
+  const frameBboxes = bboxesByFrame[currentFrame] ?? [];
+
   return (
     <>
       {/* right sidebar */}
@@ -138,7 +133,7 @@ function RightSidebar({
               max={3.0}
               step={0.1}
               value={sigmaThresh}
-              onChange={(e) => setSigmaThresh(parseFloat(e.target.value))}
+              onChange={(e) => useStore.setState({ sigmaThresh: parseFloat(e.target.value) })}
               style={{ flex: 1, accentColor: "#750000" }}
             />
           </div>
@@ -167,7 +162,7 @@ function RightSidebar({
               max={5.0}
               step={0.1}
               value={rarePctThresh}
-              onChange={(e) => setRarePctThresh(parseFloat(e.target.value))}
+              onChange={(e) => useStore.setState({ rarePctThresh: parseFloat(e.target.value) })}
               style={{ flex: 1, accentColor: "#750000" }}
             />
           </div>
@@ -211,7 +206,7 @@ function RightSidebar({
                 {outliers.map((o, i) => (
                   <li
                     key={i}
-                    onClick={() => setCurrentFrame(o.frame_idx)}
+                    onClick={() => useStore.setState({ currentFrame: o.frame_idx })}
                     style={{
                       cursor: "pointer",
                       padding: "4px 6px",

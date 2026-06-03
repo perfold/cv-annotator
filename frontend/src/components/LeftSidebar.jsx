@@ -1,32 +1,16 @@
-function LeftSidebar({
-  activeClass,
-  setActiveClass,
-  newClassName,
-  setNewClassName,
-  addClass,
-  classes,
-  classColors,
-  setClassColors,
-  deleteClass,
-  newTagName,
-  setNewTagName,
-  addTag,
-  tags,
-  selectedBboxIds,
-  frameBboxes,
-  toggleBboxTag,
-  deleteTag,
-  yoloConf,
-  setYoloConf,
-  matchThresh,
-  setMatchThresh,
-  maxLost,
-  setMaxLost,
-  videoName,
-  isRunningYolo,
-  isExtracting,
-  runYolo,
-}) {
+import useStore from "../store";
+
+function LeftSidebar() {
+  const {
+    activeClass, newClassName, classes, classColors, tags,
+    newTagName, selectedBboxIds, bboxesByFrame, currentFrame,
+    yoloConf, matchThresh, maxLost, videoName, isRunningYolo, isExtracting,
+    addClass, deleteClass, addTag, deleteTag, toggleBboxTag, runYolo,
+    
+  } = useStore((s) => s);
+
+  const frameBboxes = bboxesByFrame[currentFrame] ?? [];
+
   return (
     <>
       {/* left sidebar */}
@@ -49,7 +33,7 @@ function LeftSidebar({
           <input
             type="text"
             value={newClassName}
-            onChange={(e) => setNewClassName(e.target.value)}
+            onChange={(e) => useStore.setState({ newClassName: e.target.value })}
             onKeyDown={(e) => {
               e.stopPropagation();
               if (e.key === "Enter") addClass();
@@ -64,7 +48,7 @@ function LeftSidebar({
             {classes.map((className) => (
               <li
                 key={className}
-                onClick={() => setActiveClass(className)}
+                onClick={() => useStore.setState({ activeClass: className })}
                 style={{
                   fontWeight: activeClass === className ? "bold" : "normal",
                   backgroundColor:
@@ -81,10 +65,7 @@ function LeftSidebar({
                   type="color"
                   value={classColors[className] ?? "#ffffff"}
                   onChange={(e) =>
-                    setClassColors((prev) => ({
-                      ...prev,
-                      [className]: e.target.value,
-                    }))
+                    useStore.setState({ classColors: { ...classColors, [className]: e.target.value } })
                   } // lets you pick which colour you want
                   onClick={(e) => e.stopPropagation()}
                   style={{
@@ -117,7 +98,7 @@ function LeftSidebar({
           <input
             type="text"
             value={newTagName}
-            onChange={(e) => setNewTagName(e.target.value)}
+            onChange={(e) => useStore.setState({ newTagName: e.target.value })}
             onKeyDown={(e) => {
               e.stopPropagation();
               if (e.key === "Enter") addTag();
@@ -214,7 +195,7 @@ function LeftSidebar({
                 max={0.95}
                 step={0.05}
                 value={yoloConf}
-                onChange={(e) => setYoloConf(parseFloat(e.target.value))}
+                onChange={(e) => useStore.setState({ yoloConf: parseFloat(e.target.value) })}
                 style={{ flex: 1, accentColor: "#750000", width: "100%" }}
               />
             </div>
@@ -236,7 +217,7 @@ function LeftSidebar({
                 max={0.9}
                 step={0.05}
                 value={matchThresh}
-                onChange={(e) => setMatchThresh(parseFloat(e.target.value))}
+                onChange={(e) => useStore.setState({ matchThresh: parseFloat(e.target.value) })}
                 style={{ flex: 1, accentColor: "#750000", width: "100%" }}
               />
             </div>
@@ -259,7 +240,7 @@ function LeftSidebar({
                 max={120}
                 step={5}
                 value={maxLost}
-                onChange={(e) => setMaxLost(parseInt(e.target.value))}
+                onChange={(e) => useStore.setState({ maxLost: parseInt(e.target.value) })}
                 style={{ flex: 1, accentColor: "#750000", width: "100%" }}
               />
             </div>

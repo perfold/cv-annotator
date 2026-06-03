@@ -1,24 +1,22 @@
-function Toolbar({
-  videoName,
-  uploadVideo,
-  loadFrameFolder,
-  importXML,
-  exportCVATXML,
-  openStatsModal,
-  openChipsModal,
-  saveSession,
-  bboxesByFrame,
-  classes,
-  classColors,
-  lastSavedRef,
-  setShowSaved,
-  showSaved,
-  mode,
-  setMode,
-  quality,
-  changeQuality,
-  isExtracting,
-}) {
+import useStore from "../store";
+
+function Toolbar({ saveSession, lastSavedRef }) {
+  const {
+    videoName,
+    bboxesByFrame,
+    showSaved,
+    mode,
+    quality,
+    isExtracting,
+    uploadVideo,
+    loadFrameFolder,
+    importXML,
+    exportCVATXML,
+    openStatsModal,
+    openChipsModal,
+    changeQuality,
+  } = useStore((s) => s);
+
   return (
     <div
       style={{
@@ -52,8 +50,7 @@ function Toolbar({
               size="9"
               onKeyDown={(e) => {
                 e.stopPropagation();
-                if (e.key === "Enter")
-                  loadFrameFolder(e.target.value.trim());
+                if (e.key === "Enter") loadFrameFolder(e.target.value.trim());
               }}
             />
           </div>{" "}
@@ -80,9 +77,7 @@ function Toolbar({
             style={{ width: "25%" }}
             tabIndex={-1}
             disabled={!videoName}
-            onClick={() =>
-              document.getElementById("import-xml-input").click()
-            }
+            onClick={() => document.getElementById("import-xml-input").click()}
           >
             Import XML
           </button>
@@ -119,15 +114,10 @@ function Toolbar({
             tabIndex={-1}
             disabled={!videoName}
             onClick={() =>
-              saveSession(
-                videoName,
-                bboxesByFrame,
-                classes,
-                classColors,
-              ).then(() => {
+              saveSession().then(() => {
                 lastSavedRef.current = JSON.stringify(bboxesByFrame);
-                setShowSaved(true);
-                setTimeout(() => setShowSaved(false), 5000);
+                useStore.setState({ showSaved: true });
+                setTimeout(() => useStore.setState({ showSaved: false }), 5000);
               })
             }
           >
@@ -161,7 +151,7 @@ function Toolbar({
           <h4 style={{ margin: 0 }}> Mode Toggle (W)</h4>
           <button
             tabIndex={-1}
-            onClick={() => setMode("select")}
+            onClick={() => useStore.setState({ mode: "select" })}
             style={{
               fontWeight: mode === "select" ? "bold" : "normal",
               background: mode === "select" ? "#750000" : "",
@@ -173,7 +163,7 @@ function Toolbar({
           </button>
           <button
             tabIndex={-1}
-            onClick={() => setMode("draw")}
+            onClick={() => useStore.setState({ mode: "draw" })}
             style={{
               fontWeight: mode === "draw" ? "bold" : "normal",
               background: mode === "draw" ? "#750000" : "",
