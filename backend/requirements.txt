@@ -11,3 +11,6 @@ requests
 matplotlib
 seaborn
 scipy
+torchreid
+gdown
+tensorboard

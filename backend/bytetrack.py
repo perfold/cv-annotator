@@ -67,6 +67,11 @@ def hungarian(cost, threshold):
     ud += [j for j in range(cost.shape[1]) if j not in matched_c and j not in ud] # add any dets that scipy didnt assign a track to (happens when more dets than tracks)
     return matched, ut, ud
 
+def cosine_dist(a, b): # 1 - cosine_similarity. 0 = identical, 1 = orthogonal
+    dot  = np.dot(a, b)
+    norm = np.linalg.norm(a) * np.linalg.norm(b)
+    return 1.0 - dot / (norm + 1e-8)
+
 class Track:
     _next_id = 0 # increments with each new track
 
@@ -83,6 +88,8 @@ class Track:
         self.mean, self.cov = kf.initiate(np.array([cx, cy, w, h], float)) # initiate kalman filter (velocity 0)
         self.time_since_update = 0 # num of frames since last matched
         self.state = 'tracked'
+        emb = det.get('embedding', None)
+        self.embedding_mean = np.array(emb, float) if emb is not None else None # running avg embedding for this track, None until embeddings computed
 
     def predict(self, kf):
         self.mean, self.cov = kf.predict(self.mean, self.cov) # pred the position in next frame
@@ -98,6 +105,13 @@ class Track:
         self.mean, self.cov = kf.update(self.mean, self.cov, np.array([cx, cy, w, h], float)) # correct kalman filter using actual det
         self.time_since_update = 0
         self.state = 'tracked'
+        emb = det.get('embedding', None)
+        alpha = 0.1 # how much new frame affects mean embedding
+        if emb is not None:
+            if self.embedding_mean is None:
+                self.embedding_mean = np.array(emb, float)
+            else:
+                self.embedding_mean = (1-alpha) * self.embedding_mean + alpha * np.array(emb, float)
 
     def to_xyxy(self):
         cx, cy, w, h = self.mean[:4]
@@ -160,7 +174,7 @@ class ByteTracker:
         
         return dets
 
-    def _associate(self, tracks, dets):
+    def _associate(self, tracks, dets, emb_weight=0.3): # emb_weight affects how much visual similarity contributes vs iou (0 = iou only, 1 = visual only)
 
         if not tracks or not dets: # if no dets or tracks, return everything as unmatched
             return [], list(range(len(tracks))), list(range(len(dets)))
@@ -169,4 +183,16 @@ class ByteTracker:
         db = np.array([[d['xtl'], d['ytl'], d['xbr'], d['ybr']] for d in dets]) # detected positions
 
         cost = 1 - iou_batch(tb, db) # cost matrix: lower cost = better overlap = better match
+
+        track_embs = [t.embedding_mean for t in tracks]
+        det_embs   = [d.get('embedding') for d in dets]
+        for i, te in enumerate(track_embs):
+            if te is None:
+                continue
+            for j, de in enumerate(det_embs):
+                if de is None:
+                    continue # leave this pair as pure iou cost
+                vis = cosine_dist(te, de) # 0=same, 1=different
+                cost[i, j] = (1 - emb_weight) * cost[i, j] + emb_weight * vis # weighted blend for this pair only
+
         return hungarian(cost, 1 - self.match_thresh) # use hungarian to assign pairs, rej if below IoU threshold

@@ -54,8 +54,11 @@ const useStore = create((set, get) => ({
   // outlier detection states
   outliers: [],
   isScanning: false,
-  sigmaThresh: 2.0,
+  embPctThresh: 4.0, // sensitivity k: flag NN distances this many MADs above the class median (higher = stricter)
   rarePctThresh: 1.0,
+
+  // embedding states (shared by outlier detection rule 3 and bytetrack re-id)
+  embeddingStatus: "idle", // idle/computing/ready, for sidebar indicator
 
   // save and load annotations from data folder
   saveSession: async () => {
@@ -96,6 +99,7 @@ const useStore = create((set, get) => ({
       currentFrame: 0,
       bboxesByFrame: {},
       outliers: [],
+      embeddingStatus: "idle", // new video, old embedding cache no longer valid
     });
 
     // resume annotations
@@ -110,6 +114,12 @@ const useStore = create((set, get) => ({
           classes: session.classes,
           classColors: session.classColors ?? {},
         });
+        // restore embedding status if cache already exists for this video
+        const embRes = await fetch(
+          `http://localhost:8000/embeddings-status/${res.data.video_name}`,
+        );
+        const embData = await embRes.json();
+        if (embData.status === "ready") set({ embeddingStatus: "ready" });
       }
     }
   },
@@ -136,6 +146,7 @@ const useStore = create((set, get) => ({
         currentFrame: 0,
         bboxesByFrame: {},
         outliers: [],
+        embeddingStatus: "idle", // new video, old embedding cache no longer valid
       });
       const session = await loadSession(res.data.video_name);
       if (session) {
@@ -148,6 +159,12 @@ const useStore = create((set, get) => ({
             classes: session.classes,
             classColors: session.classColors ?? {},
           });
+          // restore embedding status if cache already exists for this video
+          const embRes = await fetch(
+            `http://localhost:8000/embeddings-status/${res.data.video_name}`,
+          );
+          const embData = await embRes.json();
+          if (embData.status === "ready") set({ embeddingStatus: "ready" });
         }
       }
     } catch (err) {
@@ -706,9 +723,120 @@ const useStore = create((set, get) => ({
     }
   },
 
+  // compute osnet embeddings for all annotated bboxes, cache to data/output/video-name/embeddings.json
+  computeEmbeddings: async (force = false) => {
+    // force=true to recompute even if cache exists (e.g. after re-annotating)
+    const { videoName } = get();
+    if (!videoName) return;
+    set({ embeddingStatus: "computing" });
+    try {
+      const res = await fetch(`http://localhost:8000/embeddings/${videoName}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        alert(`Embedding failed: ${data.error}`); // surface backend error (e.g. no annotations saved yet)
+        set({ embeddingStatus: "idle" });
+        return;
+      }
+      set({ embeddingStatus: "ready" });
+    } catch (err) {
+      console.error(err);
+      alert("Embedding computation failed. Check the console.");
+      set({ embeddingStatus: "idle" });
+    }
+  },
+
+  // run bytetrack with visual re-id using precomputed embeddings
+  // separate from runYolo so yolo inference stays fast (no embeddings on first run)
+  runTrackingWithReId: async () => {
+    const {
+      videoName,
+      imageDims,
+      yoloConf,
+      matchThresh,
+      maxLost,
+      classes,
+      classColors,
+      pushHistory,
+    } = get();
+    if (!videoName) return;
+    const { origW, origH, dispW, dispH } = imageDims;
+    if (!dispW || !dispH) {
+      alert("Load a video first.");
+      return;
+    }
+    set({ isRunningYolo: true }); // reuse yolo loading state since it blocks the same UI
+    pushHistory();
+    try {
+      const res = await axios.post(
+        `http://localhost:8000/run-yolo/${videoName}`,
+        {
+          conf: yoloConf,
+          match_thresh: matchThresh,
+          max_lost: maxLost,
+          use_embeddings: true,
+        },
+        { timeout: 0 },
+      );
+      const { detections } = res.data;
+      const scaleX = dispW / origW;
+      const scaleY = dispH / origH;
+
+      // merge new classes + assign colours
+      const newClasses = [...classes];
+      const newColors = { ...classColors };
+      Object.values(detections)
+        .flat()
+        .forEach((d) => {
+          if (!newClasses.includes(d.class_name)) {
+            newClasses.push(d.class_name);
+            newColors[d.class_name] =
+              PALETTE[newClasses.length % PALETTE.length];
+          }
+        });
+
+      // merge detected bboxes into existing annotations (non-destructive)
+      const prev = get().bboxesByFrame;
+      const next = {};
+      for (const [frameIdx, bboxes] of Object.entries(prev)) {
+        const manual = bboxes.filter((b) => b.confidence === undefined);
+        if (manual.length > 0) next[frameIdx] = manual;
+      }
+      for (const [frameIdxStr, dets] of Object.entries(detections)) {
+        const frameIdx = parseInt(frameIdxStr);
+        const newBboxes = dets.map((d) => ({
+          id: crypto.randomUUID(),
+          className: d.class_name,
+          x: d.xtl * scaleX,
+          y: d.ytl * scaleY,
+          width: (d.xbr - d.xtl) * scaleX,
+          height: (d.ybr - d.ytl) * scaleY,
+          confidence: d.confidence,
+          trackId: d.track_id ?? null,
+          tags: [],
+        }));
+        next[frameIdx] = [...(next[frameIdx] ?? []), ...newBboxes];
+        // keeps manually added bboxes (with no conf level), and replaces yolo inferred ones
+      }
+      set({ bboxesByFrame: next, classes: newClasses, classColors: newColors });
+      const total = Object.values(detections).reduce((s, d) => s + d.length, 0);
+      alert(
+        `Re-ID done: ${total} detections re-tracked with visual embeddings.`,
+      );
+    } catch (err) {
+      console.error(err);
+      alert("Re-ID tracking failed. Check the console.");
+    } finally {
+      set({ isRunningYolo: false });
+    }
+  },
+
   // detect outliers in video
   scanOutliers: async () => {
-    const { videoName, sigmaThresh, rarePctThresh, fps } = get();
+    const { videoName, embPctThresh, rarePctThresh, fps } = get();
     if (!videoName) return;
     set({ isScanning: true });
     try {
@@ -716,7 +844,7 @@ const useStore = create((set, get) => ({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sigma: sigmaThresh,
+          emb_k: embPctThresh, // sensitivity: MADs above class-median NN distance
           rare_pct: rarePctThresh,
           fps,
         }),

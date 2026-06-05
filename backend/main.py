@@ -5,10 +5,12 @@ import os
 import json
 import subprocess
 import sys
+import asyncio
 from pathlib import Path
 from bytetrack import ByteTracker
 import csv
 import io
+import numpy as np
 from PIL import Image
 
 # paths
@@ -38,6 +40,40 @@ ckpt  = torch.load(str(YOLO_WEIGHTS), map_location=device, weights_only=False)
 model = ckpt['model'].float().fuse().eval()
 names  = model.module.names if hasattr(model, "module") else model.names
 stride = int(model.stride.max())
+
+# load osnet for visual embeddings 
+import torchreid
+from torchvision import transforms as T
+osnet = torchreid.models.build_model('osnet_x0_25', num_classes=1000, pretrained=True) # 0_25 is a compressed version of the model, 0.2m params compared to full 2.2m
+osnet = osnet.eval().to(device)
+
+# osnet expects 256x128
+_osnet_tf = T.Compose([
+    T.Resize((256, 128)),
+    T.ToTensor(),
+    T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+])
+
+EMBEDDINGS_CACHE_FILE = "embeddings.json" # {bbox_id: [float, ...]} per video
+
+def embed_chip(img_crop): # run a single target chip through osnet, return normalised vector
+    x   = _osnet_tf(img_crop.convert("RGB")).unsqueeze(0).to(device)
+    with torch.no_grad():
+        vec = osnet(x)[0].cpu().numpy().astype(float)
+    vec /= np.linalg.norm(vec) + 1e-8 # l2-normalise so cosine dist = dot product
+    return vec.tolist()
+
+def embed_chips(img_crops, batch_size=64): # batched for embedding, much faster
+    if not img_crops:
+        return []
+    out = []
+    for i in range(0, len(img_crops), batch_size):
+        batch = torch.stack([_osnet_tf(c.convert("RGB")) for c in img_crops[i:i + batch_size]]).to(device)
+        with torch.no_grad(): 
+            vecs = osnet(batch).cpu().numpy().astype(float) 
+        vecs /= (np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-8) # l2-normalise each row
+        out.extend(v.tolist() for v in vecs)
+    return out
 
 app = FastAPI()
 
@@ -199,9 +235,11 @@ def get_frame(video_name: str, frame_idx: int):
 # function to save annotations
 @app.post("/save/{video_name}")
 async def save_annotations(video_name: str, payload: dict = Body(...)):
-    path = os.path.join(OUTPUT_DIR, video_name, "annotations.json")
-    with open(path, "w") as f:
+    path     = Path(OUTPUT_DIR) / video_name / "annotations.json"
+    tmp_path = path.with_suffix(".json.tmp") # write to temp first, then rename atomically
+    with open(tmp_path, "w") as f: # prevents corrupt file if server crashes mid-write
         json.dump(payload, f, indent=2)
+    tmp_path.replace(path)
     return {"status": "saved"}
 
 # function to load annotations from prev save
@@ -210,8 +248,11 @@ async def load_annotations(video_name: str):
     path = os.path.join(OUTPUT_DIR, video_name, "annotations.json")
     if not os.path.exists(path):
         return {}
-    with open(path) as f:
-        return json.load(f)
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except json.JSONDecodeError:
+        return {"error": "annotations.json is corrupt. delete it and re-annotate"}
 
 # run yolo on all frames
 YOLO_CACHE_FILE = "yolo_raw_cache.json"   # stores all dets at conf=0.01
@@ -271,15 +312,48 @@ async def run_yolo(video_name: str, payload: dict = Body(...)):
 
     # filter out dets according to conf level set by user, then run bytetrack
     tracker    = ByteTracker(track_thresh=conf_thres, match_thresh=match_thresh, max_lost=max_lost)
-    detections = {}
 
-    for frame_idx in sorted(raw_cache.keys()):
-        frame_dets = [d for d in raw_cache[frame_idx] if d["confidence"] >= conf_thres]
-        if not frame_dets:
-            continue
-        # tracker adds 'track_id' to each det in-place
-        tracked = tracker.update([dict(d) for d in frame_dets])
-        detections[frame_idx] = tracked
+    # load embedding cache if requested
+    use_embeddings = payload.get("use_embeddings", False)
+
+    frame_files = sorted(frames_dir.glob("*.jpg"))
+
+    def embed_frame_dets(frame_idx, dets):
+        # embed every chip in the frame
+        if frame_idx >= len(frame_files):
+            return dets
+        img = Image.open(frame_files[frame_idx]).convert("RGB") # convert once per frame, not per chip
+        valid, crops = [], []
+        for d in dets:
+            left, top   = max(0, int(d["xtl"])), max(0, int(d["ytl"]))
+            right, bot  = int(d["xbr"]), int(d["ybr"])
+            if right <= left or bot <= top: # if weird shape, leave them embedding-less
+                continue
+            valid.append(d)
+            crops.append(img.crop((left, top, right, bot)))
+        for i, (d, vec) in enumerate(zip(valid, embed_chips(crops))):
+            d["embedding"] = vec
+            print(f"embedding progress: {i}/{len(crops)} chips")
+        return dets
+
+    def embed_and_track():
+        result = {}
+        for frame_idx in sorted(raw_cache.keys()):
+            frame_dets = [d for d in raw_cache[frame_idx] if d["confidence"] >= conf_thres]
+            if not frame_dets:
+                continue
+            dets = [dict(d) for d in frame_dets]
+            if use_embeddings:
+                dets = embed_frame_dets(frame_idx, dets) # attach visual embeddings for re-id matching
+            # tracker adds 'track_id' to each det in-place
+            tracked = tracker.update(dets)
+            for d in tracked:
+                d.pop("embedding", None)
+            result[frame_idx] = tracked
+        return result
+
+    loop = asyncio.get_event_loop()
+    detections = await loop.run_in_executor(None, embed_and_track)
 
     detected_classes = list({d["class_name"] for dets in detections.values() for d in dets})
     return {"detections": detections, "classes": detected_classes}
@@ -446,6 +520,100 @@ async def export_chips(payload: dict = Body(...)):
 
     return {"total_chips": total_chips, "skipped_videos": skipped}
 
+# compute and cache osnet embeddings for all annotated bboxes in a video
+@app.post("/embeddings/{video_name}")
+async def compute_embeddings(video_name: str, payload: dict = Body(...)):
+    force = payload.get("force", False) # if true, recompute even if cache exists
+
+    ann_path = OUTPUT_DIR / video_name / "annotations.json"
+    if not ann_path.exists():
+        return {"error": "no annotations found. save the session at least once first"}
+
+    try:
+        with open(ann_path) as f:
+            data = json.load(f)
+    except json.JSONDecodeError:
+        return {"error": "annotations.json is corrupt. delete it and re-annotate"}
+
+    cache_path = OUTPUT_DIR / video_name / EMBEDDINGS_CACHE_FILE
+    if cache_path.exists() and not force:
+        with open(cache_path) as f:
+            return {"status": "cached", "bbox_count": len(json.load(f))}
+
+    bboxes_by_frame = data.get("bboxesByFrame", {})
+    orig_w = data.get("origW")
+    orig_h = data.get("origH")
+    disp_w = data.get("dispW")
+    disp_h = data.get("dispH")
+
+    if not all([orig_w, orig_h, disp_w, disp_h]):
+        return {"error": "missing image dims. re-save the session first"}
+
+    scale_x = orig_w / disp_w # display-space bbox coords to original image space
+    scale_y = orig_h / disp_h
+
+    # collect all (frame_path, bbox_id, crop_box) tuples upfront on the main thread
+    crops = [] # list of (frame_path, bbox_id, (left, top, right, bottom))
+    for frame_idx_str, bboxes in bboxes_by_frame.items():
+        frame_idx = int(frame_idx_str)
+        frame_path= OUTPUT_DIR / video_name / f"{frame_idx + 1:07d}.jpg"
+        if not frame_path.exists():
+            continue
+        for bbox in bboxes:
+            bid = bbox.get("id")
+            if not bid:
+                continue
+            x = bbox.get("x", 0) * scale_x
+            y = bbox.get("y", 0) * scale_y
+            w = bbox.get("width",  0) * scale_x
+            h = bbox.get("height", 0) * scale_y
+            left   = max(0, int(x))
+            top    = max(0, int(y))
+            right  = min(orig_w, int(x + w))
+            bottom = min(orig_h, int(y + h))
+            if right <= left or bottom <= top: # just in case there are bboxes with wrong geometry
+                continue
+            crops.append((frame_path, bid, (left, top, right, bottom)))
+
+    # run osnet inference 
+    def run_inference():
+        from collections import defaultdict
+        # group crops by frame so each frame is opened once, embedded, then released. keeps memory flat over long videos
+        by_frame = defaultdict(list)
+        for frame_path, bid, box in crops:
+            by_frame[frame_path].append((bid, box))
+
+        embeddings = {} # key: bbox_id, val: embedding vector
+        done = 0
+        for frame_path, items in by_frame.items():
+            img = Image.open(frame_path).convert("RGB")
+            chips = [img.crop(box) for _, box in items]
+            vecs  = embed_chips(chips) # batched inside; never holds more than one batch of tensors
+            for (bid, _), vec in zip(items, vecs):
+                embeddings[bid] = vec
+            done += len(items)
+            print(f"embedding progress: {done}/{len(crops)} chips") # per-frame, so it actually updates
+            # img and chips go out of scope each iteration, not retained
+        return embeddings
+
+    loop = asyncio.get_event_loop()
+    embeddings = await loop.run_in_executor(None, run_inference)
+
+    with open(cache_path, "w") as f:
+        json.dump(embeddings, f)
+
+    return {"status": "computed", "bbox_count": len(embeddings)}
+
+# check if embedding cache exists for a video
+@app.get("/embeddings-status/{video_name}")
+def embeddings_status(video_name: str):
+    cache_path = OUTPUT_DIR / video_name / EMBEDDINGS_CACHE_FILE
+    if not cache_path.exists():
+        return {"status": "idle"}
+    with open(cache_path) as f:
+        count = len(json.load(f))
+    return {"status": "ready", "bbox_count": count}
+
 # add annotation to outlier list
 def add_outlier(outliers, flagged_ids, frame_idx, bbox_id, cls, reason, detail, timestamp):
     key = (bbox_id, reason)
@@ -464,8 +632,10 @@ def add_outlier(outliers, flagged_ids, frame_idx, bbox_id, cls, reason, detail, 
 # get all the outliers in the video
 @app.post("/outliers/{video_name}")
 async def detect_outliers(video_name: str, payload: dict = Body(...)):
-    sigma_thresh    = payload.get("sigma", 2.0) # how far outside mean, to count as outlier 
     rare_pct_thresh = payload.get("rare_pct", 1.0) # how rare to consider annotation outlier
+    emb_k           = payload.get("emb_k", 4.0) # flag nn distances this many MADs above the class median (higher = stricter)
+    emb_min_area    = payload.get("emb_min_area", 32 * 32) # for chips too small to embed reliably, skip embedding
+    min_trust_len   = payload.get("min_trust_len", 5) # only flag a visually-odd box if its track is <= 5 frames. a real object briefly in view still forms a 2+ frame track; a mislabel is usually a one-off
     fps             = payload.get("fps", 30)
 
     ann_path = OUTPUT_DIR / video_name / "annotations.json"
@@ -480,9 +650,35 @@ async def detect_outliers(video_name: str, payload: dict = Body(...)):
     if total_annotated_frames == 0:
         return {"outliers": []}
 
+    # display-space to original-image px, so the min-area gate is in real pixels (defaults to 1 if dims missing)
+    orig_w = data.get("origW")
+    orig_h = data.get("origH")
+    disp_w = data.get("dispW")
+    disp_h = data.get("dispH")
+    scale_x = orig_w / disp_w if (orig_w and disp_w) else 1.0
+    scale_y = orig_h / disp_h if (orig_h and disp_h) else 1.0
+
+    # load embedding cache if available
+    cache_path = OUTPUT_DIR / video_name / EMBEDDINGS_CACHE_FILE
+    embeddings = {}
+    if cache_path.exists():
+        with open(cache_path) as f:
+            embeddings = json.load(f)
+
+    # count how many frames each track spans, so we can tell a persistent object from a one-off box.
+    track_frames = {} # trackId: set of frame_idx it appears in
+    for frame_idx_str, bboxes in bboxes_by_frame.items():
+        frame_idx = int(frame_idx_str)
+        for bbox in bboxes:
+            tid = bbox.get("trackId")
+            if tid is None:
+                continue
+            track_frames.setdefault(tid, set()).add(frame_idx)
+
     # collect per-class data
     class_ratios = {} # list of (frame_idx, bbox_id, ratio)
     class_frame_sets = {} # set of frame_idx it appears in
+    class_embeddings = {} # list of (frame_idx, bbox_id, vec, is_isolated) for rule 1
 
     for frame_idx_str, bboxes in bboxes_by_frame.items():
         frame_idx = int(frame_idx_str)
@@ -490,39 +686,47 @@ async def detect_outliers(video_name: str, payload: dict = Body(...)):
             cls = bbox.get("className", "unknown")
             w   = bbox.get("width", 0)
             h   = bbox.get("height", 0)
+            bid = bbox.get("id")
             if h == 0:
                 continue
             ratio = w / h
             if cls not in class_ratios:
                 class_ratios[cls]     = []
                 class_frame_sets[cls] = set()
-            class_ratios[cls].append((frame_idx, bbox.get("id"), ratio))
+                class_embeddings[cls] = []
+            class_ratios[cls].append((frame_idx, bid, ratio))
             class_frame_sets[cls].add(frame_idx) # track which frames this class appears in
+            orig_area = (w * scale_x) * (h * scale_y) # chip size in original image px
+            if bid and bid in embeddings and orig_area >= emb_min_area: # tiny chips embed to noise, so skip them here
+                tid = bbox.get("trackId")
+                # isolated = tracker linked this box to a track no longer than min_trust_len frames.
+                track_len = len(track_frames.get(tid, set())) if tid is not None else 10**9 # manually drawn boxes have no id, so are given 10**9 len and not flagged for "isolated"
+                is_isolated = track_len <= min_trust_len
+                class_embeddings[cls].append((frame_idx, bid, np.array(embeddings[bid]), is_isolated))
 
     flagged_ids = set()
     outliers    = []
 
     for cls, entries in class_ratios.items():
-        ratios = [r for _, _, r in entries] # get list of ratios
 
-        # rule 1: statistical aspect ratio outlier
-        if len(ratios) >= 10: # std not useful if smaller
-            mean     = sum(ratios) / len(ratios)
-            variance = sum((r - mean) ** 2 for r in ratios) / len(ratios)
-            std      = variance ** 0.5
-            if std > 0:
-                for frame_idx, bbox_id, ratio in entries:
-                    if orientation_rule: # skip those that pass rule 1
-                        if "max_ratio" in orientation_rule and ratio <= orientation_rule["max_ratio"]:
-                            continue
-                        if "min_ratio" in orientation_rule and ratio >= orientation_rule["min_ratio"]:
-                            continue
-                    seconds   = frame_idx / fps
-                    timestamp = f"{int(seconds // 3600):02d}:{int((seconds % 3600) // 60):02d}:{int(seconds % 60):02d}"
-                    if abs(ratio - mean) > sigma_thresh * std: # if ratio too far from mean, by sigma_thresh * std, outlier
-                        add_outlier(outliers, flagged_ids, frame_idx, bbox_id, cls, "aspect_ratio",
-                            f"w/h={ratio:.2f} (mean={mean:.2f}, {abs(ratio - mean) / std:.1f}σ away)", timestamp)
-
+        # rule 1: embedding distance to nearest same-class neighbour, gated by track isolation
+        emb_entries = class_embeddings.get(cls, [])
+        if len(emb_entries) >= 5: # need a few samples for "nearest neighbour" to mean anything
+            vecs = np.stack([v for _, _, v, _ in emb_entries])
+            sims = vecs @ vecs.T # cosine similarity
+            np.fill_diagonal(sims, -np.inf) # ignore itself
+            nn_dist = 1.0 - sims.max(axis=1) # cosine dist to nearest neighbour of this class
+            med = np.median(nn_dist) # median nn distance for this class
+            mad = np.median(np.abs(nn_dist - med)) + 1e-8 # mean absolute variance (MAD)
+            threshold = med + emb_k * 1.4826 * mad 
+            for (frame_idx, bbox_id, _, is_isolated), dist in zip(emb_entries, nn_dist): # loop thru all frames 
+                dist = float(dist)
+                seconds   = frame_idx / fps
+                timestamp = f"{int(seconds // 3600):02d}:{int((seconds % 3600) // 60):02d}:{int(seconds % 60):02d}"
+                if dist >= threshold and is_isolated: # visually too different AND not anchored to a real track
+                    add_outlier(outliers, flagged_ids, frame_idx, bbox_id, cls, "embedding",
+                        f"cosine dist={dist:.3f} to nearest {cls} ({(dist-med)/(1.4826*mad):.1f} MADs above median), track-isolated", timestamp)
+                        
         # rule 2: rare class
         frame_pct = len(class_frame_sets[cls]) / total_annotated_frames * 100
         if frame_pct <= rare_pct_thresh: # if seen too little times, probably outlier too

@@ -38,6 +38,7 @@ annotation-tool/
 │   │       ├── annotations.json            Saved bboxes, classes, colors, image dims, timestamp
 │   │       ├── extraction_metadata.json    JPEG quality setting used for frame extraction
 │   │       └── yolo_raw_cache.json         Cached YOLO detections at conf=0.01 (generated on first run)
+│   │       └── embeddings.json             Cached OSNet embeddings per bbox
 │   └── chips/                              Exported bbox target chips, sorted by class
 │       └── {class_name}/
 │           └── {video_name}_frame{idx:07d}_{trackId}_{uuid[:6]}.jpg
@@ -91,6 +92,24 @@ Adjusting Conf/Match/Max lost and re-running skips inference and only re-runs th
 
 ---
 
+## Tracking + Re-ID
+
+Run via the **Run Tracking + Re-ID** button in the Models panel (left sidebar).
+
+This runs the same ByteTrack pipeline as Run YOLOv7-tiny, but additionally embeds each
+detection with OSNet and blends visual similarity into the association
+cost. This helps keep track IDs stable through crossings and brief overlaps, where
+IoU-only tracking tends to swap IDs.
+
+It works on a fresh video in one press. It builds the YOLO cache itself if needed, so
+there is no separate prerequisite step. Embeddings are computed live from the frames
+during tracking; the plain Run YOLOv7-tiny button does not embed and stays fast.
+
+**Note:** embedding every detection is significantly slower than plain tracking, especially
+on CPU. GPU is strongly recommended for long footage.
+
+---
+
 ## Outlier Detection
 
 Run on demand via the **Scan for Outliers** button in the right sidebar (Outlier Detection panel).
@@ -99,10 +118,14 @@ Flagged bboxes are highlighted in **amber (#ffcc00)** on the canvas and marked w
 
 **Detection rules:**
 
-| Rule         | What it checks                                                                                                                       | Configurable                              |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------- |
-| Aspect ratio | Flags bboxes whose w/h ratio is statistically unusual compared to other bboxes of the same class in the video (requires ≥10 samples) | σ threshold slider (1.5–3.0, default 2.0) |
-| Rare class   | Flags all bboxes of a class that appears in suspiciously few frames - likely a misclick or misclassification                         | Rare % slider (0.1–5.0%, default 1.0%)    |
+| Rule       | What it checks                                                                                                                                                                                                                                                                                                                                 | Configurable                                          |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| Embedding  | Flags a bbox that is BOTH visually unlike other bboxes of its class AND not anchored to a real track. Visual distance is the OSNet cosine distance to the nearest same-class neighbour, flagged when it exceeds the class median by k MADs. Requires Compute Embeddings to have been run; tiny chips and manually drawn boxes are not flagged. | Sens slider (2.0–8.0, default 4.0; higher = stricter) |
+| Rare class | Flags all bboxes of a class that appears in suspiciously few frames - likely a misclick or misclassification                                                                                                                                                                                                                                   | Rare % slider (0.1–5.0%, default 1.0%)                |
+
+The Embedding rule requires OSNet embeddings to be computed first via the **Compute Embeddings**
+button (same panel). The status indicator shows idle / computing / ready. The Rare class rule
+works without embeddings.
 
 ---
 
@@ -189,7 +212,8 @@ Flagged bboxes are highlighted in **amber (#ffcc00)** on the canvas and marked w
 - [ ] Select a manually drawn bbox, then find all similar instances of it in the subsequent frames and populate the bbox via template-matching or similar algorithms.
 - [ ] Select an existing bbox, mark it as a FA, then auto remove all similar instances in subsequent frames via template-matching or similar algorithms.
 - [x] Outlier detection algorithm based on annotated classes to identify which annotations for that class could be wrong.
-- [ ] Embedding-based outlier detection
+- [x] Embedding-based outlier detection (OSNet visual distance, gated by track isolation).
+- [x] Visual re-ID for tracking (OSNet embeddings blended into ByteTrack association).
 - [ ] Use (any variant of) SAM (https://github.com/facebookresearch/segment-anything) to tighten bounding boxes on demand for all bboxes in a frame.
 - [x] Summarise the class label distribution stats for each project/ across all projects and export in csv format.
 - [x] Extract and export bbox target chips by saving them in respective class folders.

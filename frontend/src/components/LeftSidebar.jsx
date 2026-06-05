@@ -2,11 +2,28 @@ import useStore from "../store";
 
 function LeftSidebar() {
   const {
-    activeClass, newClassName, classes, classColors, tags,
-    newTagName, selectedBboxIds, bboxesByFrame, currentFrame,
-    yoloConf, matchThresh, maxLost, videoName, isRunningYolo, isExtracting,
-    addClass, deleteClass, addTag, deleteTag, toggleBboxTag, runYolo,
-    
+    activeClass,
+    newClassName,
+    classes,
+    classColors,
+    tags,
+    newTagName,
+    selectedBboxIds,
+    bboxesByFrame,
+    currentFrame,
+    yoloConf,
+    matchThresh,
+    maxLost,
+    videoName,
+    isRunningYolo,
+    isExtracting,
+    addClass,
+    deleteClass,
+    addTag,
+    deleteTag,
+    toggleBboxTag,
+    runYolo,
+    runTrackingWithReId,
   } = useStore((s) => s);
 
   const frameBboxes = bboxesByFrame[currentFrame] ?? [];
@@ -33,7 +50,9 @@ function LeftSidebar() {
           <input
             type="text"
             value={newClassName}
-            onChange={(e) => useStore.setState({ newClassName: e.target.value })}
+            onChange={(e) =>
+              useStore.setState({ newClassName: e.target.value })
+            }
             onKeyDown={(e) => {
               e.stopPropagation();
               if (e.key === "Enter") addClass();
@@ -65,7 +84,12 @@ function LeftSidebar() {
                   type="color"
                   value={classColors[className] ?? "#ffffff"}
                   onChange={(e) =>
-                    useStore.setState({ classColors: { ...classColors, [className]: e.target.value } })
+                    useStore.setState({
+                      classColors: {
+                        ...classColors,
+                        [className]: e.target.value,
+                      },
+                    })
                   } // lets you pick which colour you want
                   onClick={(e) => e.stopPropagation()}
                   style={{
@@ -195,7 +219,9 @@ function LeftSidebar() {
                 max={0.95}
                 step={0.05}
                 value={yoloConf}
-                onChange={(e) => useStore.setState({ yoloConf: parseFloat(e.target.value) })}
+                onChange={(e) =>
+                  useStore.setState({ yoloConf: parseFloat(e.target.value) })
+                }
                 style={{ flex: 1, accentColor: "#750000", width: "100%" }}
               />
             </div>
@@ -217,7 +243,9 @@ function LeftSidebar() {
                 max={0.9}
                 step={0.05}
                 value={matchThresh}
-                onChange={(e) => useStore.setState({ matchThresh: parseFloat(e.target.value) })}
+                onChange={(e) =>
+                  useStore.setState({ matchThresh: parseFloat(e.target.value) })
+                }
                 style={{ flex: 1, accentColor: "#750000", width: "100%" }}
               />
             </div>
@@ -240,7 +268,9 @@ function LeftSidebar() {
                 max={120}
                 step={5}
                 value={maxLost}
-                onChange={(e) => useStore.setState({ maxLost: parseInt(e.target.value) })}
+                onChange={(e) =>
+                  useStore.setState({ maxLost: parseInt(e.target.value) })
+                }
                 style={{ flex: 1, accentColor: "#750000", width: "100%" }}
               />
             </div>
@@ -252,6 +282,15 @@ function LeftSidebar() {
               onClick={runYolo}
             >
               {isRunningYolo ? "Running…" : "Run YOLOv7-tiny"}
+            </button>
+            {/* run bytetrack with visual re-id — embeds detections live from frames, so it works on a fresh video in one press (builds the yolo cache itself if needed) */}
+            <button
+              style={{ width: "100%", marginTop: 4 }}
+              tabIndex={-1}
+              disabled={!videoName || isRunningYolo || isExtracting}
+              onClick={runTrackingWithReId}
+            >
+              {isRunningYolo ? "Running…" : "Run Tracking + Re-ID"}
             </button>
             {/* run SAM button */}
             <button

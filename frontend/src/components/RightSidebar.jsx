@@ -2,10 +2,19 @@ import useStore from "../store";
 
 function RightSidebar({ OUTLIER_COLOR }) {
   const {
-    bboxesByFrame, currentFrame, selectedBboxIds, outliers,
-    isScanning, sigmaThresh, rarePctThresh, videoName,
-    openContextMenu, deleteBbox, scanOutliers,
-    
+    bboxesByFrame,
+    currentFrame,
+    selectedBboxIds,
+    outliers,
+    isScanning,
+    embPctThresh,
+    rarePctThresh,
+    embeddingStatus,
+    videoName,
+    openContextMenu,
+    deleteBbox,
+    scanOutliers,
+    computeEmbeddings,
   } = useStore((s) => s);
 
   const frameBboxes = bboxesByFrame[currentFrame] ?? [];
@@ -109,7 +118,7 @@ function RightSidebar({ OUTLIER_COLOR }) {
         >
           <h3 style={{ margin: "0 0 8px 0" }}>Outlier Detection</h3>
 
-          {/* sigma slider */}
+          {/* embedding sensitivity slider: flags boxes whose nearest same-class neighbour is k MADs past the class-median distance (higher = stricter, fewer flags) */}
           <div
             style={{
               display: "flex",
@@ -125,15 +134,17 @@ function RightSidebar({ OUTLIER_COLOR }) {
                 flexShrink: 0,
               }}
             >
-              σ thresh: {sigmaThresh.toFixed(1)}
+              Sens: {embPctThresh.toFixed(1)}
             </label>
             <input
               type="range"
-              min={1.5}
-              max={3.0}
-              step={0.1}
-              value={sigmaThresh}
-              onChange={(e) => useStore.setState({ sigmaThresh: parseFloat(e.target.value) })}
+              min={2.0}
+              max={8.0}
+              step={0.5}
+              value={embPctThresh}
+              onChange={(e) =>
+                useStore.setState({ embPctThresh: parseFloat(e.target.value) })
+              }
               style={{ flex: 1, accentColor: "#750000" }}
             />
           </div>
@@ -162,9 +173,65 @@ function RightSidebar({ OUTLIER_COLOR }) {
               max={5.0}
               step={0.1}
               value={rarePctThresh}
-              onChange={(e) => useStore.setState({ rarePctThresh: parseFloat(e.target.value) })}
+              onChange={(e) =>
+                useStore.setState({ rarePctThresh: parseFloat(e.target.value) })
+              }
               style={{ flex: 1, accentColor: "#750000" }}
             />
+          </div>
+
+          {/* embedding section: compute button + status */}
+          <div
+            style={{
+              borderTop: "1px solid #333",
+              paddingTop: 8,
+              marginBottom: 8,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: 4,
+              }}
+            >
+              <span style={{ fontSize: 11, color: "#aaa" }}>
+                Embeddings (OSnet)
+              </span>
+              {/* status indicator: idle/computing/ready */}
+              <span
+                style={{
+                  fontSize: 10,
+                  color:
+                    embeddingStatus === "ready"
+                      ? "#4caf50" // green when ready
+                      : embeddingStatus === "computing"
+                        ? "#ffcc00" // amber while running
+                        : "#666", // grey when idle
+                }}
+              >
+                {embeddingStatus === "ready"
+                  ? "✓ ready"
+                  : embeddingStatus === "computing"
+                    ? "computing..."
+                    : "not computed"}
+              </span>
+            </div>
+
+            {/* compute button: recompute if already ready */}
+            <button
+              style={{ width: "100%", marginBottom: 0 }}
+              tabIndex={-1}
+              disabled={!videoName || embeddingStatus === "computing"}
+              onClick={() => computeEmbeddings(embeddingStatus === "ready")} // force=true if recomputing
+            >
+              {embeddingStatus === "computing"
+                ? "Computing..."
+                : embeddingStatus === "ready"
+                  ? "Recompute Embeddings"
+                  : "Compute Embeddings"}
+            </button>
           </div>
 
           {/* scan button */}
@@ -206,7 +273,9 @@ function RightSidebar({ OUTLIER_COLOR }) {
                 {outliers.map((o, i) => (
                   <li
                     key={i}
-                    onClick={() => useStore.setState({ currentFrame: o.frame_idx })}
+                    onClick={() =>
+                      useStore.setState({ currentFrame: o.frame_idx })
+                    }
                     style={{
                       cursor: "pointer",
                       padding: "4px 6px",
@@ -233,12 +302,10 @@ function RightSidebar({ OUTLIER_COLOR }) {
                     </span>{" "}
                     <span style={{ color: "#ccc" }}>{o.class}</span>
                     <div style={{ color: "#666", fontSize: 10 }}>
-                      {o.reason === "orientation"
-                        ? "⚠ wrong orientation"
-                        : o.reason === "aspect_ratio"
-                          ? "⚠ unusual shape"
-                          : "⚠ rare class"}{" "}
-                      — {o.detail}
+                      {o.reason === "rare_class"
+                        ? "⚠ rare class"
+                        : "⚠ visually different"}{" "}
+                      : {o.detail}
                     </div>
                   </li>
                 ))}
