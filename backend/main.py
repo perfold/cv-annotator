@@ -54,7 +54,7 @@ _osnet_tf = T.Compose([
     T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
-EMBEDDINGS_CACHE_FILE = "embeddings.json" # {bbox_id: [float, ...]} per video
+EMBEDDINGS_CACHE_FILE = "embeddings.npz" # {bbox_id: [float, ...]} per video
 
 def embed_chip(img_crop): # run a single target chip through osnet, return normalised vector
     x   = _osnet_tf(img_crop.convert("RGB")).unsqueeze(0).to(device)
@@ -599,10 +599,16 @@ async def compute_embeddings(video_name: str, payload: dict = Body(...)):
     loop = asyncio.get_event_loop()
     embeddings = await loop.run_in_executor(None, run_inference)
 
-    with open(cache_path, "w") as f:
-        json.dump(embeddings, f)
+    ids = list(embeddings.keys())
+    vecs = np.array([embeddings[k] for k in ids], dtype=np.float32)
+    np.savez_compressed(cache_path, ids=np.array(ids), embeddings=vecs)
 
     return {"status": "computed", "bbox_count": len(embeddings)}
+
+# load embeddings from .npz cache and return dict of k=bbox_id, v=np.array
+def load_embeddings_cache(cache_path: Path) -> dict:
+    data = np.load(cache_path, allow_pickle=True)
+    return {str(bid): vec for bid, vec in zip(data["ids"], data["embeddings"])}
 
 # check if embedding cache exists for a video
 @app.get("/embeddings-status/{video_name}")
@@ -610,8 +616,7 @@ def embeddings_status(video_name: str):
     cache_path = OUTPUT_DIR / video_name / EMBEDDINGS_CACHE_FILE
     if not cache_path.exists():
         return {"status": "idle"}
-    with open(cache_path) as f:
-        count = len(json.load(f))
+    count = len(np.load(cache_path, allow_pickle=True)["ids"])
     return {"status": "ready", "bbox_count": count}
 
 # add annotation to outlier list
@@ -662,8 +667,7 @@ async def detect_outliers(video_name: str, payload: dict = Body(...)):
     cache_path = OUTPUT_DIR / video_name / EMBEDDINGS_CACHE_FILE
     embeddings = {}
     if cache_path.exists():
-        with open(cache_path) as f:
-            embeddings = json.load(f)
+        embeddings = load_embeddings_cache(cache_path)
 
     # count how many frames each track spans, so we can tell a persistent object from a one-off box.
     track_frames = {} # trackId: set of frame_idx it appears in
