@@ -12,6 +12,7 @@ import csv
 import io
 import numpy as np
 from PIL import Image
+import cv2
 
 # paths
 BASE_DIR     = Path(__file__).parent.parent
@@ -53,6 +54,12 @@ _osnet_tf = T.Compose([
     T.ToTensor(),
     T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
+
+# check if opencv-contrib-python is installed
+if not hasattr(cv2, "TrackerCSRT_create"):
+    raise RuntimeError(
+        "cv2.TrackerCSRT_create not found. Install opencv-contrib-python"
+    )
 
 EMBEDDINGS_CACHE_FILE = "embeddings.npz" # {bbox_id: [float, ...]} per video
 
@@ -357,6 +364,116 @@ async def run_yolo(video_name: str, payload: dict = Body(...)):
 
     detected_classes = list({d["class_name"] for dets in detections.values() for d in dets})
     return {"detections": detections, "classes": detected_classes}
+
+# propagate a single manually-drawn box forward with a csrt tracker.
+@app.post("/propagate/{video_name}")
+async def propagate_box(video_name: str, payload: dict = Body(...)):
+    frames_dir = OUTPUT_DIR / video_name
+    frame_files = sorted(frames_dir.glob("*.jpg"))
+    n_frames = len(frame_files)
+
+    # seed box in ORIGINAL pixel space 
+    start_frame = int(payload["start_frame"])
+    box = payload["box"] # {x, y, width, height} in original-resolution pixels
+    x, y, w, h = float(box["x"]), float(box["y"]), float(box["width"]), float(box["height"])
+
+    # stopping controls
+    # disappearance of object is detected by the guards below (geometry + appearance re-check).
+    emb_check_every = int(payload.get("emb_check_every", 5)) # run appearance re-check every n frames
+    emb_dist_thresh = float(payload.get("emb_dist_thresh", 0.40))  # cosine dist past which object is "gone"
+    edge_min_visible = float(payload.get("edge_min_visible", 0.5)) # stop once less than this fraction of the box is still inside the frame (0.5 means stop when half has exited)
+
+    if start_frame < 0 or start_frame >= n_frames:
+        return {"error": "start_frame out of range"}
+    if w <= 1 or h <= 1:
+        return {"error": "seed box too small"}
+
+    def run_propagation():
+        seed_img = cv2.imread(str(frame_files[start_frame])) # seed csrt on the start frame in original resolution
+        if seed_img is None:
+            return {}, "could not read start frame"
+        img_h, img_w = seed_img.shape[:2] # frame dims, for the edge visibility check
+
+        tracker = cv2.TrackerCSRT_create()
+        tracker.init(seed_img, (int(x), int(y), int(w), int(h)))
+
+        seed_crop = Image.fromarray(cv2.cvtColor(seed_img, cv2.COLOR_BGR2RGB)).crop( # grab chip 
+            (int(x), int(y), int(x + w), int(y + h))
+        )
+        seed_emb = np.array(embed_chip(seed_crop), dtype=float) # cache appearance for re-check later on
+
+        prev_box = (x, y, w, h)
+        seed_area = w * h
+        results = {} # frame_idx -> {x, y, width, height} in original space
+        stop_reason = "end" # default if we reach the end of the video without a disappearance
+
+        frame_idx = start_frame + 1
+        steps_taken = 0
+        # run until we run out of frames 
+        while frame_idx < n_frames:
+
+            img = cv2.imread(str(frame_files[frame_idx]))
+            if img is None:
+                stop_reason = "frame_read_failed"
+                break
+
+            ok, bbox = tracker.update(img)
+
+            if not ok:
+                stop_reason = "tracker_lost"
+                break
+
+            bx, by, bw, bh = bbox
+
+            area = bw * bh # check area of box
+            if area > seed_area * 6 or area < seed_area * 0.15: # if the area changes a LOT, probably an error
+                stop_reason = "area_jump"
+                break
+
+            # check position of box
+            cx_prev = prev_box[0] + prev_box[2] / 2
+            cy_prev = prev_box[1] + prev_box[3] / 2
+            cx_now, cy_now = bx + bw / 2, by + bh / 2
+            jump = ((cx_now - cx_prev) ** 2 + (cy_now - cy_prev) ** 2) ** 0.5
+            if jump > max(bw, bh) * 2: # if box move more than expected in 1 frame
+                stop_reason = "position_jump"
+                break
+
+            # check how much of the box is still inside the frame
+            ix1, iy1 = max(0, bx), max(0, by)
+            ix2, iy2 = min(img_w, bx + bw), min(img_h, by + bh)
+            inside_w, inside_h = max(0, ix2 - ix1), max(0, iy2 - iy1)
+            visible_frac = (inside_w * inside_h) / (bw * bh + 1e-7)
+            if visible_frac < edge_min_visible: # if object mostly gone (<50% visible)
+                stop_reason = "frame_edge" # object left/leaving the frame 
+                break
+
+            # every (emb_check_every) frames, check if its still the same object
+            if steps_taken % emb_check_every == 0:
+                left, top = max(0, int(bx)), max(0, int(by))
+                right, bot = int(bx + bw), int(by + bh)
+                if right > left and bot > top:
+                    crop = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)).crop( # crop out chip
+                        (left, top, right, bot)
+                    )
+                    cur_emb = np.array(embed_chip(crop), dtype=float) # embed chip
+
+                    cos_dist = 1.0 - float(np.dot(seed_emb, cur_emb)) # get cos dist between the initial embedding and current embedding
+                    if cos_dist > emb_dist_thresh: # if too diff, stop
+                        stop_reason = "appearance_drift"
+                        break
+
+            # passed all guards: accept this frame's box
+            results[frame_idx] = {"x": bx, "y": by, "width": bw, "height": bh}
+            prev_box = (bx, by, bw, bh)
+            frame_idx += 1
+            steps_taken += 1
+
+        return results, stop_reason
+
+    loop = asyncio.get_event_loop()
+    results, stop_reason = await loop.run_in_executor(None, run_propagation)
+    return {"boxes": results, "stop_reason": stop_reason, "count": len(results)}
 
 # compute class label distribution for video
 def compute_stats(video_name: str, bboxes_by_frame: dict) -> list[dict]:

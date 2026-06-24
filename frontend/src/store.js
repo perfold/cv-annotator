@@ -48,6 +48,7 @@ const useStore = create((set, get) => ({
   // model states
   yoloConf: 0.25, // confidence level, default is 0.25
   isRunningYolo: false,
+  isPropagating: false, // csrt box propagation in progress
   matchThresh: 0.5, // bytetrack settings
   maxLost: 90,
 
@@ -369,6 +370,98 @@ const useStore = create((set, get) => ({
         }),
       },
     });
+  },
+
+  // propagate a single selected box forward with csrt
+  propagateBox: async (bboxId, opts = {}) => {
+    const {
+      videoName,
+      currentFrame,
+      bboxesByFrame,
+      imageDims,
+      tags,
+      pushHistory,
+    } = get();
+    if (!videoName) return;
+
+    const frameBboxes = bboxesByFrame[currentFrame] ?? [];
+    const src = frameBboxes.find((b) => b.id === bboxId);
+    if (!src) {
+      alert("Select a box on this frame to propagate.");
+      return;
+    }
+
+    const { origW, origH, dispW, dispH } = imageDims;
+    if (!origW || !dispW) {
+      alert("Load a video first.");
+      return;
+    }
+    const scaleX = dispW / origW;
+    const scaleY = dispH / origH;
+
+    set({ isPropagating: true });
+    try {
+      const res = await fetch(`http://localhost:8000/propagate/${videoName}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          start_frame: currentFrame,
+          // scale the seed box UP into original pixel space for csrt
+          box: {
+            x: src.x / scaleX,
+            y: src.y / scaleY,
+            width: src.width / scaleX,
+            height: src.height / scaleY,
+          },
+        }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        alert(`Propagation failed: ${data.error}`);
+        return;
+      }
+
+      const boxes = data.boxes ?? {};
+      const frameIdxs = Object.keys(boxes);
+      if (frameIdxs.length === 0) {
+        alert(
+          `Propagation stopped immediately (${data.stop_reason}). Nothing to add.`,
+        );
+        return;
+      }
+
+      // make sure the "propagated" tag exists so the sidebar/label render it
+      const PROP_TAG = "propagated";
+      const nextTags = tags.includes(PROP_TAG) ? tags : [...tags, PROP_TAG];
+
+      pushHistory();
+      // scale each returned box back DOWN into display space + write across frames
+      const next = { ...bboxesByFrame };
+      for (const [frameIdxStr, b] of Object.entries(boxes)) {
+        const frameIdx = parseInt(frameIdxStr);
+        const newBox = {
+          id: crypto.randomUUID(),
+          className: src.className,
+          x: b.x * scaleX,
+          y: b.y * scaleY,
+          width: b.width * scaleX,
+          height: b.height * scaleY,
+          tags: [PROP_TAG],
+          // no conf field, to indicate that bbox is drawn manually vs detected by yolo
+        };
+        next[frameIdx] = [...(next[frameIdx] ?? []), newBox];
+      }
+
+      set({ bboxesByFrame: next, tags: nextTags });
+      alert(
+        `Propagated ${data.count} frame${data.count === 1 ? "" : "s"} (stopped: ${data.stop_reason}).`,
+      );
+    } catch (err) {
+      console.error(err);
+      alert("Propagation failed. Check the console.");
+    } finally {
+      set({ isPropagating: false });
+    }
   },
 
   // bbox class changing functions

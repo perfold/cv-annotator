@@ -110,6 +110,26 @@ on CPU. GPU is strongly recommended for long footage.
 
 ---
 
+## Box Propagation
+
+Propagate a single manually-drawn bbox forward across subsequent frames. Select a bbox
+and either press **P** or click **Propagate forward (P)** in the context menu.
+
+This seeds a CSRT single-object tracker on the drawn box and follows the object frame-by-frame by appearance. Each propagated box is written across the frames it survives on, carrying a `propagated` tag so it shows up in the annotation list and on the canvas label. Propagation is undoable (Ctrl+Z).
+
+Because CSRT follows appearance, it does not reliably know when it has lost the object. Once the target leaves the frame it tends to drift onto background or hop to a nearby object. Propagation therefore stops automatically when any of the following fire, and the reason is reported back in the result:
+
+| Stop reason      | What triggered it                                                           |
+| ---------------- | --------------------------------------------------------------------------- |
+| appearance_drift | Tracked patch no longer resembles the seeded object (OSNet cosine distance) |
+| frame_edge       | Object has mostly left the frame (visible fraction dropped below threshold) |
+| area_jump        | Box area ballooned or collapsed vs the seed (catastrophic tracking failure) |
+| position_jump    | Box jumped further in one frame than the object possibly could              |
+| tracker_lost     | CSRT's own update reported failure                                          |
+| end              | Reached the end of the video without any disappearance                      |
+
+---
+
 ## Outlier Detection
 
 Run on demand via the **Scan for Outliers** button in the right sidebar (Outlier Detection panel).
@@ -131,20 +151,21 @@ works without embeddings.
 
 ## Keyboard Shortcuts & Controls
 
-| Key                | Action                        |
-| ------------------ | ----------------------------- |
-| W                  | Toggle select/draw mode       |
-| Esc                | Cancel bbox drawing           |
-| Arrow Left/Right   | Previous/next frame           |
-| , / .              | Jump back/forward by N frames |
-| Space              | Play/pause                    |
-| Delete / Backspace | Delete selected bbox(es)      |
-| Ctrl+A             | Select all boxes on frame     |
-| Ctrl+Z             | Undo                          |
-| Ctrl+Y             | Redo                          |
-| Ctrl+C             | Copy selected boxes           |
-| Ctrl+V             | Paste copied boxes            |
-| Ctrl+S             | Save                          |
+| Key                | Action                          |
+| ------------------ | ------------------------------- |
+| W                  | Toggle select/draw mode         |
+| Esc                | Cancel bbox drawing             |
+| P                  | Propagate selected bbox forward |
+| Arrow Left/Right   | Previous/next frame             |
+| , / .              | Jump back/forward by N frames   |
+| Space              | Play/pause                      |
+| Delete / Backspace | Delete selected bbox(es)        |
+| Ctrl+A             | Select all boxes on frame       |
+| Ctrl+Z             | Undo                            |
+| Ctrl+Y             | Redo                            |
+| Ctrl+C             | Copy selected boxes             |
+| Ctrl+V             | Paste copied boxes              |
+| Ctrl+S             | Save                            |
 
 > N is the frame interval, adjustable in the UI (default: 10)
 
@@ -174,16 +195,16 @@ works without embeddings.
 
 ### Select Mode
 
-| Input                      | Action                                             |
-| -------------------------- | -------------------------------------------------- |
-| Left click                 | Select a bbox                                      |
-| Double click               | Resize existing bbox                               |
-| Shift + Left click         | Add/remove bbox from selection                     |
-| Left click + drag (canvas) | Rubber band select multiple bboxes                 |
-| Ctrl + A                   | Select all bboxes on current frame                 |
-| Left click + drag (bbox)   | Move selected bbox(es)                             |
-| Backspace / Delete         | Delete selected bbox(es)                           |
-| Right click                | Open context menu (change class, add tags, delete) |
+| Input                      | Action                                                                    |
+| -------------------------- | ------------------------------------------------------------------------- |
+| Left click                 | Select a bbox                                                             |
+| Double click               | Resize existing bbox                                                      |
+| Shift + Left click         | Add/remove bbox from selection                                            |
+| Left click + drag (canvas) | Rubber band select multiple bboxes                                        |
+| Ctrl + A                   | Select all bboxes on current frame                                        |
+| Left click + drag (bbox)   | Move selected bbox(es)                                                    |
+| Backspace / Delete         | Delete selected bbox(es)                                                  |
+| Right click                | Open context menu (change class, add tags, propagate box forward, delete) |
 
 ---
 
@@ -209,7 +230,7 @@ works without embeddings.
 ### Advanced Features
 
 - [x] Upload and run YOLOv7-tiny (https://github.com/WongKinYiu/yolov7) object detection model – to prepopulate the data with bboxes (and class labels) on demand.
-- [ ] Select a manually drawn bbox, then find all similar instances of it in the subsequent frames and populate the bbox via template-matching or similar algorithms.
+- [x] Select a manually drawn bbox, then find all similar instances of it in the subsequent frames and populate the bbox via a CSRT object tracker, auto stopping when the object disappears.
 - [ ] Select an existing bbox, mark it as a FA, then auto remove all similar instances in subsequent frames via template-matching or similar algorithms.
 - [x] Outlier detection algorithm based on annotated classes to identify which annotations for that class could be wrong.
 - [x] Embedding-based outlier detection (OSNet visual distance, gated by track isolation).

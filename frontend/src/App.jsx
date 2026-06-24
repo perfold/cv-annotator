@@ -182,6 +182,14 @@ function App() {
       }
       if (e.key === "w" || e.key === "W")
         useStore.setState({ mode: mode === "draw" ? "select" : "draw" }); // toggle between select and draw mode
+      // propagate the single selected box forward with csrt when press p
+      if ((e.key === "p" || e.key === "P") && selectedBboxIds.length === 1) {
+        e.preventDefault();
+        if (!useStore.getState().isPropagating)
+          useStore
+            .getState()
+            .propagateBox(selectedBboxIds[0]);
+      }
       if (
         (e.key === "Delete" || e.key === "Backspace") &&
         selectedBboxIds.length > 0
