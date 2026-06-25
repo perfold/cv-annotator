@@ -1,3 +1,4 @@
+import { useRef, useState, useLayoutEffect } from "react";
 import useStore from "../store";
 
 function ContextMenu() {
@@ -18,6 +19,37 @@ function ContextMenu() {
     faMatchClass,
   } = useStore((s) => s);
 
+  const menuRef = useRef(null);
+  const [pos, setPos] = useState(null); // used to determine if context menu is cut off
+  useLayoutEffect(() => {
+    if (!contextMenu || !menuRef.current) {
+      // if menu not open, reset pos
+      setPos(null);
+      return;
+    }
+    const { width, height } = menuRef.current.getBoundingClientRect();
+    const margin = 4; // keep a little gap from the edge
+    let { x, y } = contextMenu;
+
+    // vertical: open upward if its too close to the bottom and there's space above
+    if (y + height > window.innerHeight - margin) {
+      if (y - height > margin) {
+        y = y - height; // flip above the cursor
+      } else {
+        y = window.innerHeight - height - margin; // no room either way, clamp
+      }
+    }
+    // horizontal: same idea, shift left if it would overflow the right edge
+    if (x + width > window.innerWidth - margin) {
+      if (x - width > margin) {
+        x = x - width; // flip to the left of the cursor
+      } else {
+        x = window.innerWidth - width - margin; // clamp
+      }
+    }
+    setPos({ x, y });
+  }, [contextMenu]);
+
   if (!contextMenu) return null;
 
   const frameBboxes = bboxesByFrame[currentFrame] ?? [];
@@ -27,10 +59,12 @@ function ContextMenu() {
     <>
       {/* context menu style */}
       <div
+        ref={menuRef}
         style={{
           position: "fixed",
-          top: contextMenu.y,
-          left: contextMenu.x,
+          top: pos ? pos.y : contextMenu.y,
+          left: pos ? pos.x : contextMenu.x,
+          visibility: pos ? "visible" : "hidden",
           background: "#1a1a1a",
           border: "1px solid #555",
           borderRadius: 4,
