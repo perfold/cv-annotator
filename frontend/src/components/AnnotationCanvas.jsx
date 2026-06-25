@@ -3,6 +3,7 @@ import {
   Layer,
   Image as KonvaImage,
   Rect,
+  Line,
   Text,
   Group,
   Label,
@@ -349,6 +350,7 @@ function AnnotationCanvas({
           {frameBboxes.map((b) => {
             const color = classColors[b.className] ?? "#ffffff";
             const isSelected = selectedBboxIds.includes(b.id);
+            const isFa = (b.tags ?? []).includes("false-alarm"); // if false-alarm, draw a cross + more opague
             return (
               <Group
                 key={b.id}
@@ -461,9 +463,31 @@ function AnnotationCanvas({
                   stroke={outlierBboxIds?.includes(b.id) ? "#ffcc00" : color}
                   strokeWidth={isSelected ? 6 : 2} // thickens line when box is highlighted
                   fill={
-                    (outlierBboxIds?.includes(b.id) ? "#ffcc00" : color) + "25"
-                  } // intensity of bbox fill colour
+                    (outlierBboxIds?.includes(b.id) ? "#ffcc00" : color) +
+                    (isFa ? "55" : "25") // denser fill for fa so it reads as struck out
+                  }
                 />
+                {/* fa cross */}
+                {isFa && (
+                  <>
+                    <Line
+                      points={[0, 0, b.width, b.height]}
+                      stroke={
+                        outlierBboxIds?.includes(b.id) ? "#ffcc00" : color
+                      }
+                      strokeWidth={2}
+                      listening={false}
+                    />
+                    <Line
+                      points={[b.width, 0, 0, b.height]}
+                      stroke={
+                        outlierBboxIds?.includes(b.id) ? "#ffcc00" : color
+                      }
+                      strokeWidth={2}
+                      listening={false}
+                    />
+                  </>
+                )}
                 {/* class:id tag above bbox */}
                 <Label x={0} y={-20}>
                   <Tag fill="white" />

@@ -15,6 +15,7 @@ function RightSidebar({ OUTLIER_COLOR }) {
     deleteBbox,
     scanOutliers,
     computeEmbeddings,
+    removeAllFa,
   } = useStore((s) => s);
 
   const frameBboxes = bboxesByFrame[currentFrame] ?? [];
@@ -103,6 +104,23 @@ function RightSidebar({ OUTLIER_COLOR }) {
               ))}
             </ul>
           )}
+        </div>
+
+        {/* false-alarm removal, deletes every box tagged "false-alarm" */}
+        <div
+          style={{
+            borderTop: "1px solid #ccc",
+            flexShrink: 0,
+          }}
+        >
+          <button
+            style={{ width: "100%" }}
+            tabIndex={-1}
+            disabled={!videoName}
+            onClick={removeAllFa}
+          >
+            Remove all FA
+          </button>
         </div>
 
         {/* outlier detection section */}

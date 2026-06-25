@@ -17,7 +17,13 @@ const PALETTE = [
   "#009688",
   "#cddc39",
 ];
-const DEFAULT_TAGS = ["occluded", "blur", "cut-off", "image-error"]; // default tags
+const DEFAULT_TAGS = [
+  "occluded",
+  "blur",
+  "cut-off",
+  "image-error",
+  "false-alarm",
+]; // default tags
 
 const QUALITY_PRESETS = { low: 31, medium: 15, high: 1 }; // extracted frames' jpg quality
 

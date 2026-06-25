@@ -475,6 +475,142 @@ async def propagate_box(video_name: str, payload: dict = Body(...)):
     results, stop_reason = await loop.run_in_executor(None, run_propagation)
     return {"boxes": results, "stop_reason": stop_reason, "count": len(results)}
 
+# function to return iou of two boxes in (x, y, w, h) original-pixel space
+def _iou(a, b): 
+    ix1, iy1 = max(a[0], b[0]), max(a[1], b[1])
+    ix2, iy2 = min(a[0] + a[2], b[0] + b[2]), min(a[1] + a[3], b[1] + b[3])
+    iw, ih = max(0, ix2 - ix1), max(0, iy2 - iy1)
+    inter = iw * ih
+    union = a[2] * a[3] + b[2] * b[3] - inter
+    return inter / (union + 1e-7)
+
+# track FA forward with csrt, and tag every existing box it overlaps (if its the same class)
+@app.post("/mark-fa-track/{video_name}")
+async def mark_fa_track(video_name: str, payload: dict = Body(...)):
+    frames_dir = OUTPUT_DIR / video_name
+    frame_files = sorted(frames_dir.glob("*.jpg"))
+    n_frames = len(frame_files)
+
+    # seed box in ORIGINAL pixel space
+    start_frame = int(payload["start_frame"])
+    box = payload["box"]
+    x, y, w, h = float(box["x"]), float(box["y"]), float(box["width"]), float(box["height"])
+
+    # existing boxes per frame, original pixel space, for iou-matching the track.
+    existing = payload.get("existing", {})
+
+    # fa matching controls
+    fa_class = payload.get("fa_class") # class of the seed fa
+    match_class = bool(payload.get("match_class", True)) # true to only tag same-class boxes as the seed
+    iou_thresh = float(payload.get("iou_thresh", 0.3)) # min overlap to count the track as hitting a box
+
+    # stopping controls, same as propagate manually drawn box logic  (geometry + appearance re-check)
+    emb_check_every = int(payload.get("emb_check_every", 5))
+    emb_dist_thresh = float(payload.get("emb_dist_thresh", 0.40))
+    edge_min_visible = float(payload.get("edge_min_visible", 0.5))
+
+    if start_frame < 0 or start_frame >= n_frames:
+        return {"error": "start_frame out of range"}
+    if w <= 1 or h <= 1:
+        return {"error": "seed box too small"}
+
+    def run_fa_track():
+        seed_img = cv2.imread(str(frame_files[start_frame])) # seed csrt on the start frame in original resolution
+        if seed_img is None:
+            return [], "could not read start frame"
+        img_h, img_w = seed_img.shape[:2] # frame dims, for the edge visibility check
+
+        tracker = cv2.TrackerCSRT_create()
+        tracker.init(seed_img, (int(x), int(y), int(w), int(h)))
+
+        seed_crop = Image.fromarray(cv2.cvtColor(seed_img, cv2.COLOR_BGR2RGB)).crop( # grab chip
+            (int(x), int(y), int(x + w), int(y + h))
+        )
+        seed_emb = np.array(embed_chip(seed_crop), dtype=float) # cache appearance for re-check later on
+
+        prev_box = (x, y, w, h)
+        seed_area = w * h
+        matched_ids = [] # ids of existing boxes the track hit, these get tagged fa
+        stop_reason = "end" # default if we reach the end of the video without a disappearance
+
+        frame_idx = start_frame + 1
+        steps_taken = 0
+        # run until we run out of frames
+        while frame_idx < n_frames:
+
+            img = cv2.imread(str(frame_files[frame_idx]))
+            if img is None:
+                stop_reason = "frame_read_failed"
+                break
+
+            ok, bbox = tracker.update(img)
+
+            if not ok:
+                stop_reason = "tracker_lost"
+                break
+
+            bx, by, bw, bh = bbox
+
+            area = bw * bh # check area of box
+            if area > seed_area * 6 or area < seed_area * 0.15: # if the area changes a LOT, probably an error
+                stop_reason = "area_jump"
+                break
+
+            # check position of box
+            cx_prev = prev_box[0] + prev_box[2] / 2
+            cy_prev = prev_box[1] + prev_box[3] / 2
+            cx_now, cy_now = bx + bw / 2, by + bh / 2
+            jump = ((cx_now - cx_prev) ** 2 + (cy_now - cy_prev) ** 2) ** 0.5
+            if jump > max(bw, bh) * 2: # if box move more than expected in 1 frame
+                stop_reason = "position_jump"
+                break
+
+            # check how much of the box is still inside the frame
+            ix1, iy1 = max(0, bx), max(0, by)
+            ix2, iy2 = min(img_w, bx + bw), min(img_h, by + bh)
+            inside_w, inside_h = max(0, ix2 - ix1), max(0, iy2 - iy1)
+            visible_frac = (inside_w * inside_h) / (bw * bh + 1e-7)
+            if visible_frac < edge_min_visible: # if object mostly gone (<50% visible)
+                stop_reason = "frame_edge" # object left/leaving the frame
+                break
+
+            # every (emb_check_every) frames, check if its still the same object
+            if steps_taken % emb_check_every == 0:
+                left, top = max(0, int(bx)), max(0, int(by))
+                right, bot = int(bx + bw), int(by + bh)
+                if right > left and bot > top:
+                    crop = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)).crop( # crop out chip
+                        (left, top, right, bot)
+                    )
+                    cur_emb = np.array(embed_chip(crop), dtype=float) # embed chip
+
+                    cos_dist = 1.0 - float(np.dot(seed_emb, cur_emb)) # get cos dist between the initial embedding and current embedding
+                    if cos_dist > emb_dist_thresh: # if too diff, stop
+                        stop_reason = "appearance_drift"
+                        break
+
+            # if passed all guards, instead of adding a box, tag boxes as fa
+            best_id, best_iou = None, iou_thresh 
+            for c in existing.get(str(frame_idx), []):
+                if match_class and fa_class is not None and c.get("className") != fa_class:
+                    continue # skip boxes that aren't the same class as the seed fa
+                cb = (float(c["x"]), float(c["y"]), float(c["width"]), float(c["height"]))
+                iou = _iou((bx, by, bw, bh), cb)
+                if iou > best_iou:
+                    best_id, best_iou = c["id"], iou
+            if best_id is not None:
+                matched_ids.append(best_id)
+
+            prev_box = (bx, by, bw, bh)
+            frame_idx += 1
+            steps_taken += 1
+
+        return matched_ids, stop_reason
+
+    loop = asyncio.get_event_loop()
+    matched_ids, stop_reason = await loop.run_in_executor(None, run_fa_track)
+    return {"matched_ids": matched_ids, "stop_reason": stop_reason, "count": len(matched_ids)}
+
 # compute class label distribution for video
 def compute_stats(video_name: str, bboxes_by_frame: dict) -> list[dict]:
     class_bbox_counts = {}

@@ -43,12 +43,14 @@ const useStore = create((set, get) => ({
   tags: DEFAULT_TAGS,
   newTagName: "", // used to add custom tags for the bboxes
 
-  // shortcut (ctrl z,y,c,v) states — kept as refs in App.jsx (not reactive state)
+  // shortcut (ctrl z,y,c,v) states kept as refs in App.jsx (not reactive state)
 
   // model states
   yoloConf: 0.25, // confidence level, default is 0.25
   isRunningYolo: false,
   isPropagating: false, // csrt box propagation in progress
+  isMarkingFa: false, // csrt fa track-marking in progress
+  faMatchClass: true, // fa track only tags same-class boxes; toggle off for label-flickering FAs (car/van/truck)
   matchThresh: 0.5, // bytetrack settings
   maxLost: 90,
 
@@ -462,6 +464,137 @@ const useStore = create((set, get) => ({
     } finally {
       set({ isPropagating: false });
     }
+  },
+
+  // function to mark a moving FA across frames
+  markFaTrack: async (bboxId, opts = {}) => {
+    const {
+      videoName,
+      currentFrame,
+      bboxesByFrame,
+      imageDims,
+      tags,
+      faMatchClass,
+      pushHistory,
+    } = get();
+    if (!videoName) return;
+
+    const frameBboxes = bboxesByFrame[currentFrame] ?? [];
+    const src = frameBboxes.find((b) => b.id === bboxId);
+    if (!src) {
+      alert("Select a box on this frame to mark as FA.");
+      return;
+    }
+
+    const { origW, origH, dispW, dispH } = imageDims;
+    if (!origW || !dispW) {
+      alert("Load a video first.");
+      return;
+    }
+    const scaleX = dispW / origW;
+    const scaleY = dispH / origH;
+
+    // match_class on by default, only tags same class bboxes
+    const matchClass = opts.matchClass ?? faMatchClass;
+
+    const existing = {};
+    for (const [frameIdxStr, boxes] of Object.entries(bboxesByFrame)) {
+      if (parseInt(frameIdxStr) <= currentFrame) continue;
+      existing[frameIdxStr] = boxes.map((b) => ({
+        id: b.id,
+        className: b.className,
+        x: b.x / scaleX,
+        y: b.y / scaleY,
+        width: b.width / scaleX,
+        height: b.height / scaleY,
+      }));
+    }
+
+    set({ isMarkingFa: true });
+    try {
+      const res = await fetch(
+        `http://localhost:8000/mark-fa-track/${videoName}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            start_frame: currentFrame,
+            // scale the seed box up into original pixel space for csrt
+            box: {
+              x: src.x / scaleX,
+              y: src.y / scaleY,
+              width: src.width / scaleX,
+              height: src.height / scaleY,
+            },
+            existing,
+            fa_class: src.className, // only tag same-class boxes when match_class is on
+            match_class: matchClass,
+          }),
+        },
+      );
+      const data = await res.json();
+      if (data.error) {
+        alert(`FA marking failed: ${data.error}`);
+        return;
+      }
+
+      const matchedIds = data.matched_ids ?? [];
+
+      // make sure the "false-alarm" tag exists, in case it was deleted
+      const FA_TAG = "false-alarm";
+      const nextTags = tags.includes(FA_TAG) ? tags : [...tags, FA_TAG];
+
+      pushHistory();
+      // tag the seed box + every matched existing box as fa (across all frames)
+      const toTag = new Set([src.id, ...matchedIds]);
+      const next = {};
+      for (const [frameIdxStr, boxes] of Object.entries(bboxesByFrame)) {
+        next[frameIdxStr] = boxes.map((b) => {
+          if (!toTag.has(b.id)) return b;
+          const has = (b.tags ?? []).includes(FA_TAG);
+          return has ? b : { ...b, tags: [...(b.tags ?? []), FA_TAG] };
+        });
+      }
+
+      set({ bboxesByFrame: next, tags: nextTags });
+      alert(
+        `Marked ${matchedIds.length} box${matchedIds.length === 1 ? "" : "es"} as FA (stopped: ${data.stop_reason}).`,
+      );
+    } catch (err) {
+      console.error(err);
+      alert("FA marking failed. Check the console.");
+    } finally {
+      set({ isMarkingFa: false });
+    }
+  },
+
+  // delete every box tagged "false-alarm" across all frames
+  removeAllFa: () => {
+    const { bboxesByFrame, pushHistory } = get();
+    const FA_TAG = "false-alarm";
+
+    // skip the case where no boxes are tagged FA
+    let count = 0;
+    for (const boxes of Object.values(bboxesByFrame)) {
+      count += boxes.filter((b) => (b.tags ?? []).includes(FA_TAG)).length;
+    }
+    if (count === 0) {
+      alert("No boxes are tagged FA.");
+      return;
+    }
+    if (
+      !window.confirm(
+        `Delete ${count} box${count === 1 ? "" : "es"} tagged FA?`,
+      )
+    )
+      return;
+
+    pushHistory();
+    const next = {};
+    for (const [frameIdxStr, boxes] of Object.entries(bboxesByFrame)) {
+      next[frameIdxStr] = boxes.filter((b) => !(b.tags ?? []).includes(FA_TAG));
+    }
+    set({ bboxesByFrame: next });
   },
 
   // bbox class changing functions

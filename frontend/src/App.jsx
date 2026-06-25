@@ -186,9 +186,12 @@ function App() {
       if ((e.key === "p" || e.key === "P") && selectedBboxIds.length === 1) {
         e.preventDefault();
         if (!useStore.getState().isPropagating)
-          useStore
-            .getState()
-            .propagateBox(selectedBboxIds[0]);
+          useStore.getState().propagateBox(selectedBboxIds[0]);
+      }
+      if ((e.key === "f" || e.key === "F") && selectedBboxIds.length === 1) {
+        e.preventDefault();
+        if (!useStore.getState().isMarkingFa)
+          useStore.getState().markFaTrack(selectedBboxIds[0]);
       }
       if (
         (e.key === "Delete" || e.key === "Backspace") &&

@@ -20,7 +20,7 @@ annotation-tool/
 │           ├── Toolbar.jsx                 Upload, import/export, save, mode toggle, quality
 │           ├── VideoScrubber.jsx           Playback controls and frame scrubber
 │           ├── RightSidebar.jsx            Annotation list and outlier detection panel
-│           ├── ContextMenu.jsx             Right-click floating menu
+│           ├── ContextMenu.jsx             Right-click floating menu: change class, tags, propagate, mark FA, delete
 │           └── ProjectModal.jsx            Project picker for Export Stats and Export Chips
 ├── backend/                                FastAPI + Uvicorn
 │   ├── main.py
@@ -130,6 +130,29 @@ Because CSRT follows appearance, it does not reliably know when it has lost the 
 
 ---
 
+## False Alarm (FA) Removal
+
+Mark a persistently mis-detected or spurious object as a false alarm across frames, then bulk-delete all marked boxes. Select a bbox and either press **F** or click **Mark as FA (F)** in the context menu.
+
+This works similarly to the bbox propagation feature, but instead of drawing new
+boxes, it tags the existing boxes with a `false-alarm` tag. It stops on the same disappearance guards as propagation (appearance_drift, frame_edge, area_jump, position_jump, tracker_lost, end).
+
+**Same class only (context-menu toggle):**
+
+| Toggle       | Behaviour                                       | Use case                                                                                                                                                     |
+| ------------ | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| On (default) | Only tags boxes whose class matches the seed    | A real object persistently mislabelled as one wrong class (e.g. a motorcycle detected as `bicycle`). It tags only the wrong-class boxes, leaves correct ones |
+| Off          | Tags whatever box the track overlaps, any class | A messy detection which has a label that flickers across frames (e.g. `car` / `van` / `truck` on the same vehicle)                                           |
+
+FA-tagged boxes are drawn with a higher fill and a diagonal cross on the
+canvas (keeping their class colour), and show a `false-alarm` tag in the
+annotation list. Tagging and removal are both undoable (Ctrl+Z).
+
+Click **Remove all FA** in the right sidebar to delete every `false-alarm`
+box across all frames in one pass (after a confirmation prompt).
+
+---
+
 ## Outlier Detection
 
 Run on demand via the **Scan for Outliers** button in the right sidebar (Outlier Detection panel).
@@ -156,6 +179,7 @@ works without embeddings.
 | W                  | Toggle select/draw mode         |
 | Esc                | Cancel bbox drawing             |
 | P                  | Propagate selected bbox forward |
+| F                  | Mark selected bbox as FA        |
 | Arrow Left/Right   | Previous/next frame             |
 | , / .              | Jump back/forward by N frames   |
 | Space              | Play/pause                      |
@@ -204,7 +228,7 @@ works without embeddings.
 | Ctrl + A                   | Select all bboxes on current frame                                        |
 | Left click + drag (bbox)   | Move selected bbox(es)                                                    |
 | Backspace / Delete         | Delete selected bbox(es)                                                  |
-| Right click                | Open context menu (change class, add tags, propagate box forward, delete) |
+| Right click                | Open context menu (change class, add tags, propagate, mark as FA, delete) |
 
 ---
 
@@ -231,7 +255,7 @@ works without embeddings.
 
 - [x] Upload and run YOLOv7-tiny (https://github.com/WongKinYiu/yolov7) object detection model – to prepopulate the data with bboxes (and class labels) on demand.
 - [x] Select a manually drawn bbox, then find all similar instances of it in the subsequent frames and populate the bbox via a CSRT object tracker, auto stopping when the object disappears.
-- [ ] Select an existing bbox, mark it as a FA, then auto remove all similar instances in subsequent frames via template-matching or similar algorithms.
+- [x] Select an existing bbox, mark it as a FA, then auto remove all similar instances in subsequent frames via template-matching or similar algorithms.
 - [x] Outlier detection algorithm based on annotated classes to identify which annotations for that class could be wrong.
 - [x] Embedding-based outlier detection (OSNet visual distance, gated by track isolation).
 - [x] Visual re-ID for tracking (OSNet embeddings blended into ByteTrack association).

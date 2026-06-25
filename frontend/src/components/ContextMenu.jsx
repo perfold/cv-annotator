@@ -13,6 +13,9 @@ function ContextMenu() {
     deleteBbox,
     propagateBox,
     isPropagating,
+    markFaTrack,
+    isMarkingFa,
+    faMatchClass,
   } = useStore((s) => s);
 
   if (!contextMenu) return null;
@@ -163,6 +166,56 @@ function ContextMenu() {
               }
             >
               {isPropagating ? "Propagating…" : "Propagate forward (P)"}
+            </div>
+          </div>
+          <div style={{ borderTop: "1px solid #333" }}>
+            {/* track this box forward + tag every same-class box it hits as false-alarm */}
+            <div
+              onClick={() => {
+                if (isMarkingFa) return;
+                markFaTrack(contextMenu.bboxId);
+                useStore.setState({ contextMenu: null });
+              }}
+              style={{
+                padding: "6px 12px",
+                cursor: isMarkingFa ? "default" : "pointer",
+                color: isMarkingFa ? "#666" : "#e67e22",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "#333")}
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.background = "transparent")
+              }
+            >
+              {isMarkingFa ? "Marking FA…" : "Mark as FA (F)"}
+            </div>
+            {/* same-class toggle: on = only tag boxes matching the seed's class (mislabel case);
+                off = tag any class the track hits (label-flickering FA, e.g. car/van/truck) */}
+            <div
+              onClick={(e) => {
+                e.stopPropagation(); // toggle only, don't fire the mark or close the menu
+                useStore.setState({ faMatchClass: !faMatchClass });
+              }}
+              style={{
+                padding: "2px 12px 6px 12px",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                cursor: "pointer",
+                fontSize: 11,
+                color: "#888",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "#333")}
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.background = "transparent")
+              }
+            >
+              <input
+                type="checkbox"
+                checked={faMatchClass}
+                onChange={() => {}}
+                style={{ pointerEvents: "none" }}
+              />
+              same class only
             </div>
           </div>
           <div style={{ borderTop: "1px solid #333" }}>
