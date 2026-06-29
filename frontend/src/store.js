@@ -50,6 +50,7 @@ const useStore = create((set, get) => ({
   isRunningYolo: false,
   isPropagating: false, // csrt box propagation in progress
   isMarkingFa: false, // csrt fa track-marking in progress
+  isTightening: false, // sam2.1 bbox tightening in progress (one frame at a time)
   faMatchClass: true, // fa track only tags same-class boxes; toggle off for label-flickering FAs (car/van/truck)
   matchThresh: 0.5, // bytetrack settings
   maxLost: 90,
@@ -463,6 +464,84 @@ const useStore = create((set, get) => ({
       alert("Propagation failed. Check the console.");
     } finally {
       set({ isPropagating: false });
+    }
+  },
+
+  // run sam2.1 on every box in the current frame to snap them tighter to the actual object.
+  samTightenFrame: async (optionalClasses = null) => {
+    const { videoName, currentFrame, bboxesByFrame, imageDims } = get();
+    if (!videoName) return;
+
+    const frameBboxes = bboxesByFrame[currentFrame] ?? [];
+    const targets = optionalClasses
+      ? frameBboxes.filter((b) => optionalClasses.includes(b.className))
+      : frameBboxes;
+    if (targets.length === 0) {
+      alert("No boxes on this frame to tighten.");
+      return;
+    }
+
+    const { origW, origH, dispW, dispH } = imageDims;
+    if (!origW || !dispW) {
+      alert("Load a video first.");
+      return;
+    }
+    const scaleX = dispW / origW;
+    const scaleY = dispH / origH;
+
+    set({ isTightening: true });
+    try {
+      const res = await fetch(
+        `http://localhost:8000/sam-tighten/${videoName}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            frame_idx: currentFrame,
+            // scale each box UP into original pixel space for sam (same as the propagate seed)
+            boxes: targets.map((b) => ({
+              id: b.id,
+              x: b.x / scaleX,
+              y: b.y / scaleY,
+              width: b.width / scaleX,
+              height: b.height / scaleY,
+            })),
+          }),
+        },
+      );
+      const data = await res.json();
+      if (data.error) {
+        alert(`SAM tighten failed: ${data.error}`);
+        return;
+      }
+
+      const updates = (data.boxes ?? []).map((b) => {
+        const x = b.x * scaleX;
+        const y = b.y * scaleY;
+
+        const polygon = b.polygon
+          ? b.polygon.map(([px, py]) => [
+              (px - b.x) * scaleX,
+              (py - b.y) * scaleY,
+            ])
+          : null;
+        return {
+          id: b.id,
+          x,
+          y,
+          width: b.width * scaleX,
+          height: b.height * scaleY,
+          polygon,
+        };
+      });
+      if (updates.length === 0) return;
+
+      get().updateBboxes(updates);
+    } catch (err) {
+      console.error(err);
+      alert("SAM tighten failed. Check the console.");
+    } finally {
+      set({ isTightening: false });
     }
   },
 

@@ -454,19 +454,34 @@ function AnnotationCanvas({
                   setResizingId(b.id);
                 }}
               >
-                {/* bbox settings */}
-                <Rect
-                  x={0}
-                  y={0}
-                  width={b.width}
-                  height={b.height}
-                  stroke={outlierBboxIds?.includes(b.id) ? "#ffcc00" : color}
-                  strokeWidth={isSelected ? 6 : 2} // thickens line when box is highlighted
-                  fill={
-                    (outlierBboxIds?.includes(b.id) ? "#ffcc00" : color) +
-                    (isFa ? "55" : "25") // denser fill for fa so it reads as struck out
-                  }
-                />
+                {/* bbox */}
+                {!(b.polygon && b.polygon.length > 0) && (
+                  <Rect
+                    x={0}
+                    y={0}
+                    width={b.width}
+                    height={b.height}
+                    stroke={outlierBboxIds?.includes(b.id) ? "#ffcc00" : color}
+                    strokeWidth={isSelected ? 6 : 2} // thickens line when box is highlighted
+                    fill={
+                      (outlierBboxIds?.includes(b.id) ? "#ffcc00" : color) +
+                      (isFa ? "55" : "25") // denser fill for fa so it reads as struck out
+                    }
+                  />
+                )}
+                {/* sam segmentation polygon */}
+                {b.polygon && b.polygon.length > 0 && (
+                  <Line
+                    points={b.polygon.flat()}
+                    closed
+                    stroke={outlierBboxIds?.includes(b.id) ? "#ffcc00" : color}
+                    strokeWidth={isSelected ? 6 : 2}
+                    fill={
+                      (outlierBboxIds?.includes(b.id) ? "#ffcc00" : color) +
+                      (isFa ? "55" : "25")
+                    }
+                  />
+                )}
                 {/* fa cross */}
                 {isFa && (
                   <>

@@ -17,6 +17,7 @@ function LeftSidebar() {
     videoName,
     isRunningYolo,
     isExtracting,
+    isTightening,
     addClass,
     deleteClass,
     addTag,
@@ -24,6 +25,7 @@ function LeftSidebar() {
     toggleBboxTag,
     runYolo,
     runTrackingWithReId,
+    samTightenFrame,
   } = useStore((s) => s);
 
   const frameBboxes = bboxesByFrame[currentFrame] ?? [];
@@ -292,13 +294,14 @@ function LeftSidebar() {
             >
               {isRunningYolo ? "Running…" : "Run Tracking + Re-ID"}
             </button>
-            {/* run SAM button */}
+            {/* run sam2.1 to snap every box in this frame tighter */}
             <button
-              style={{ width: "100%", marginTop: 4, opacity: 0.4 }}
+              style={{ width: "100%", marginTop: 4 }}
               tabIndex={-1}
-              disabled
+              disabled={!videoName || isTightening}
+              onClick={() => samTightenFrame()}
             >
-              SAM (coming soon)
+              {isTightening ? "Tightening…" : "Run SAM 2.1 (Tighten Frame)"}
             </button>
           </div>
         </div>

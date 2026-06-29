@@ -61,6 +61,14 @@ if not hasattr(cv2, "TrackerCSRT_create"):
         "cv2.TrackerCSRT_create not found. Install opencv-contrib-python"
     )
 
+from ultralytics import SAM
+
+SAM_WEIGHTS = MODELS_DIR / "sam2.1_t.pt" # load sam2.1-tiny
+if not SAM_WEIGHTS.exists():
+    raise RuntimeError(f"SAM2.1 weights not found at {SAM_WEIGHTS}. Pre-download sam2.1_t.pt into models/.")
+
+sam = SAM(str(SAM_WEIGHTS))
+
 EMBEDDINGS_CACHE_FILE = "embeddings.npz" # {bbox_id: [float, ...]} per video
 
 def embed_chip(img_crop): # run a single target chip through osnet, return normalised vector
@@ -483,6 +491,76 @@ def _iou(a, b):
     inter = iw * ih
     union = a[2] * a[3] + b[2] * b[3] - inter
     return inter / (union + 1e-7)
+
+# tighten every box in one frame by prompting sam2.1 with each box
+@app.post("/sam-tighten/{video_name}")
+async def sam_tighten(video_name: str, payload: dict = Body(...)):
+    frames_dir = OUTPUT_DIR / video_name
+    frame_files = sorted(frames_dir.glob("*.jpg"))
+    n_frames = len(frame_files)
+
+    frame_idx = int(payload["frame_idx"])
+    boxes = payload["boxes"] 
+
+    if frame_idx < 0 or frame_idx >= n_frames:
+        return {"error": "frame_idx out of range"}
+    if not boxes:
+        return {"boxes": [], "tightened": 0}
+
+    def run_tighten():
+        img = cv2.imread(str(frame_files[frame_idx]))
+        if img is None:
+            return [], "could not read frame"
+        img_h, img_w = img.shape[:2]
+
+        prompt_boxes, kept = [], []
+        for bb in boxes:
+            x, y = float(bb["x"]), float(bb["y"])
+            w, h = float(bb["width"]), float(bb["height"])
+            px1, py1 = max(0, x), max(0, y)
+            px2, py2 = min(img_w, x + w), min(img_h, y + h)
+            if px2 - px1 < 1 or py2 - py1 < 1:
+                continue
+            prompt_boxes.append([px1, py1, px2, py2]) 
+            kept.append(bb)
+
+        if not prompt_boxes:
+            return [], "ok"
+        
+        res = sam(img, bboxes=prompt_boxes, device=device, retina_masks=True, verbose=False)[0]
+
+        if res.masks is None:
+            print(f"[sam] res.masks is None, sam returned no masks for {len(prompt_boxes)} box prompts")
+            return [{**bb} for bb in kept], "ok"
+        masks = res.masks.data.cpu().numpy() # (N, H, W), one mask per prompt box
+
+        out = []
+        for bb, m in zip(kept, masks):
+            mask_u8 = (m > 0.5).astype(np.uint8) 
+            cnts, _ = cv2.findContours(mask_u8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if not cnts:
+                out.append({**bb, "polygon": None}) # sam found nothing, hand box back with no polygon
+                continue
+
+            c = max(cnts, key=cv2.contourArea) # largest contour = the object
+            eps = 0.01 * cv2.arcLength(c, True)
+            poly = cv2.approxPolyDP(c, eps, True).reshape(-1, 2) 
+
+            px, py = poly[:, 0], poly[:, 1]
+            out.append({
+                "id": bb["id"],
+                "x": float(px.min()), "y": float(py.min()),
+                "width": float(px.max() - px.min()), "height": float(py.max() - py.min()),
+                "polygon": poly.astype(float).tolist(), # [[x,y], ...] absolute frame pixels
+            })
+
+        return out, "ok"
+
+    loop = asyncio.get_event_loop()
+    result, status = await loop.run_in_executor(None, run_tighten)
+    if status != "ok":
+        return {"error": status}
+    return {"boxes": result, "tightened": len(result)}
 
 # track FA forward with csrt, and tag every existing box it overlaps (if its the same class)
 @app.post("/mark-fa-track/{video_name}")
