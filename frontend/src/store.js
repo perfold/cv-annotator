@@ -1055,82 +1055,50 @@ const useStore = create((set, get) => ({
   },
 
   // run bytetrack with visual re-id using precomputed embeddings
-  // separate from runYolo so yolo inference stays fast (no embeddings on first run)
   runTrackingWithReId: async () => {
     const {
       videoName,
-      imageDims,
-      yoloConf,
       matchThresh,
       maxLost,
-      classes,
-      classColors,
+      embeddingStatus,
+      saveSession,
       pushHistory,
     } = get();
     if (!videoName) return;
-    const { origW, origH, dispW, dispH } = imageDims;
-    if (!dispW || !dispH) {
-      alert("Load a video first.");
+
+    if (embeddingStatus !== "ready") {
+      alert("Compute embeddings first, then run tracking.");
       return;
     }
-    set({ isRunningYolo: true }); // reuse yolo loading state since it blocks the same UI
-    pushHistory();
+
+    set({ isRunningYolo: true });
     try {
+      await saveSession(); // save session
+
       const res = await axios.post(
-        `http://localhost:8000/run-yolo/${videoName}`,
-        {
-          conf: yoloConf,
-          match_thresh: matchThresh,
-          max_lost: maxLost,
-          use_embeddings: true,
-        },
+        `http://localhost:8000/track-reid/${videoName}`,
+        { match_thresh: matchThresh, max_lost: maxLost },
         { timeout: 0 },
       );
-      const { detections } = res.data;
-      const scaleX = dispW / origW;
-      const scaleY = dispH / origH;
+      const data = res.data;
+      if (data.error) {
+        alert(`Re-ID tracking failed: ${data.error}`);
+        return;
+      }
 
-      // merge new classes + assign colours
-      const newClasses = [...classes];
-      const newColors = { ...classColors };
-      Object.values(detections)
-        .flat()
-        .forEach((d) => {
-          if (!newClasses.includes(d.class_name)) {
-            newClasses.push(d.class_name);
-            newColors[d.class_name] =
-              PALETTE[newClasses.length % PALETTE.length];
-          }
-        });
+      const trackIds = data.track_ids ?? {}; // { bbox_id: track_id }
 
-      // merge detected bboxes into existing annotations (non-destructive)
+      pushHistory();
+      // merge track_id onto existing boxes by id; leave every other field intact
       const prev = get().bboxesByFrame;
       const next = {};
-      for (const [frameIdx, bboxes] of Object.entries(prev)) {
-        const manual = bboxes.filter((b) => b.confidence === undefined);
-        if (manual.length > 0) next[frameIdx] = manual;
+      for (const [frameIdx, boxes] of Object.entries(prev)) {
+        next[frameIdx] = boxes.map((b) =>
+          b.id in trackIds ? { ...b, trackId: trackIds[b.id] } : b,
+        );
       }
-      for (const [frameIdxStr, dets] of Object.entries(detections)) {
-        const frameIdx = parseInt(frameIdxStr);
-        const newBboxes = dets.map((d) => ({
-          id: crypto.randomUUID(),
-          className: d.class_name,
-          x: d.xtl * scaleX,
-          y: d.ytl * scaleY,
-          width: (d.xbr - d.xtl) * scaleX,
-          height: (d.ybr - d.ytl) * scaleY,
-          confidence: d.confidence,
-          trackId: d.track_id ?? null,
-          tags: [],
-        }));
-        next[frameIdx] = [...(next[frameIdx] ?? []), ...newBboxes];
-        // keeps manually added bboxes (with no conf level), and replaces yolo inferred ones
-      }
-      set({ bboxesByFrame: next, classes: newClasses, classColors: newColors });
-      const total = Object.values(detections).reduce((s, d) => s + d.length, 0);
-      alert(
-        `Re-ID done: ${total} detections re-tracked with visual embeddings.`,
-      );
+      set({ bboxesByFrame: next });
+      alert(`Re-ID done: ${data.tracked_count} boxes assigned track IDs.`);
     } catch (err) {
       console.error(err);
       alert("Re-ID tracking failed. Check the console.");

@@ -13,6 +13,11 @@ import io
 import numpy as np
 from PIL import Image
 import cv2
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from transformers import AutoImageProcessor, AutoModel
+from ultralytics import SAM
 
 # paths
 BASE_DIR     = Path(__file__).parent.parent
@@ -21,7 +26,7 @@ INPUT_DIR    = DATA_DIR / "input"
 OUTPUT_DIR   = DATA_DIR / "output"
 MODELS_DIR   = BASE_DIR / "models"
 YOLOV7_PATH  = MODELS_DIR / "yolov7"
-YOLO_WEIGHTS = MODELS_DIR / "yolov7-tiny-visdrone.pt"
+YOLO_WEIGHTS = MODELS_DIR / "yolov7-tiny-visdrone-grouped.pt"
 
 # check if repo and model are in the right dir
 if not YOLOV7_PATH.exists():
@@ -31,7 +36,6 @@ if not YOLO_WEIGHTS.exists():
 
 sys.path.insert(0, str(YOLOV7_PATH))
 
-import torch
 from utils.datasets import LoadImages
 from utils.general import non_max_suppression, scale_coords
 
@@ -42,27 +46,7 @@ model = ckpt['model'].float().fuse().eval()
 names  = model.module.names if hasattr(model, "module") else model.names
 stride = int(model.stride.max())
 
-# load osnet for visual embeddings 
-import torchreid
-from torchvision import transforms as T
-osnet = torchreid.models.build_model('osnet_x0_25', num_classes=1000, pretrained=True) # 0_25 is a compressed version of the model, 0.2m params compared to full 2.2m
-osnet = osnet.eval().to(device)
-
-# osnet expects 256x128
-_osnet_tf = T.Compose([
-    T.Resize((256, 128)),
-    T.ToTensor(),
-    T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-])
-
-# check if opencv-contrib-python is installed
-if not hasattr(cv2, "TrackerCSRT_create"):
-    raise RuntimeError(
-        "cv2.TrackerCSRT_create not found. Install opencv-contrib-python"
-    )
-
-from ultralytics import SAM
-
+# load SAM
 SAM_WEIGHTS = MODELS_DIR / "sam2.1_t.pt" # load sam2.1-tiny
 if not SAM_WEIGHTS.exists():
     raise RuntimeError(f"SAM2.1 weights not found at {SAM_WEIGHTS}. Pre-download sam2.1_t.pt into models/.")
@@ -71,11 +55,71 @@ sam = SAM(str(SAM_WEIGHTS))
 
 EMBEDDINGS_CACHE_FILE = "embeddings.npz" # {bbox_id: [float, ...]} per video
 
-def embed_chip(img_crop): # run a single target chip through osnet, return normalised vector
-    x   = _osnet_tf(img_crop.convert("RGB")).unsqueeze(0).to(device)
+# check if opencv-contrib-python is installed
+if not hasattr(cv2, "TrackerCSRT_create"):
+    raise RuntimeError(
+        "cv2.TrackerCSRT_create not found. Install opencv-contrib-python"
+    )
+
+# load dinov3 convnext base + trained supcon mlp head for visual embeddings
+DINOV3_HF_NAME = "facebook/dinov3-convnext-base-pretrain-lvd1689m"
+HEAD_WEIGHTS = MODELS_DIR / "dinov3_convnext_base_mlp_head_supcon.pt"
+if not HEAD_WEIGHTS.exists():
+    raise RuntimeError(f"supcon head weights not found at {HEAD_WEIGHTS}. copy from fe-test results/finetuned/.")
+
+class MLPHead(nn.Module):
+    def __init__(self, input_dim: int, hidden_dim: int = 512, output_dim: int = 256):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.BatchNorm1d(hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, output_dim),
+        )
+
+    def forward(self, x):
+        return F.normalize(self.net(x), dim=-1)
+
+# backbone
+_dino_processor = AutoImageProcessor.from_pretrained(DINOV3_HF_NAME)
+_dino_backbone  = AutoModel.from_pretrained(DINOV3_HF_NAME).eval().to(device)
+for _p in _dino_backbone.parameters():
+    _p.requires_grad = False
+
+# mlp head
+_head_ckpt = torch.load(str(HEAD_WEIGHTS), map_location=device, weights_only=False)
+_dino_head = MLPHead(
+    input_dim=_head_ckpt["input_dim"],
+    hidden_dim=_head_ckpt["hidden_dim"],
+    output_dim=_head_ckpt["output_dim"],
+).to(device)
+_dino_head.load_state_dict(_head_ckpt["state_dict"])
+_dino_head.eval()
+for _p in _dino_head.parameters():
+    _p.requires_grad = False
+
+EMBED_DIM = _head_ckpt["output_dim"] # 256, old osnet cache is 512d
+
+def _dino_preprocess(img_crop, image_size: int = 224):
+    img = img_crop.convert("RGB")
+    w, h = img.size
+    side = max(w, h)
+    padded = Image.new("RGB", (side, side), (0, 0, 0))
+    padded.paste(img, ((side - w) // 2, (side - h) // 2))
+    return padded.resize((image_size, image_size), Image.BILINEAR)
+
+def _dino_embed_batch(pil_imgs):
+    inputs = _dino_processor(images=pil_imgs, return_tensors="pt")
+    inputs = {k: v.to(device) for k, v in inputs.items()}
     with torch.no_grad():
-        vec = osnet(x)[0].cpu().numpy().astype(float)
-    vec /= np.linalg.norm(vec) + 1e-8 # l2-normalise so cosine dist = dot product
+        feats = _dino_backbone(**inputs).pooler_output 
+        vecs = _dino_head(feats)              
+    return vecs.cpu().numpy().astype(float)
+
+def embed_chip(img_crop): # run a single target chip through dinov3, return normalised vector
+    pil = _dino_preprocess(img_crop)
+    vec = _dino_embed_batch([pil])[0]
+    vec /= np.linalg.norm(vec) + 1e-8 
     return vec.tolist()
 
 def embed_chips(img_crops, batch_size=64): # batched for embedding, much faster
@@ -83,10 +127,9 @@ def embed_chips(img_crops, batch_size=64): # batched for embedding, much faster
         return []
     out = []
     for i in range(0, len(img_crops), batch_size):
-        batch = torch.stack([_osnet_tf(c.convert("RGB")) for c in img_crops[i:i + batch_size]]).to(device)
-        with torch.no_grad(): 
-            vecs = osnet(batch).cpu().numpy().astype(float) 
-        vecs /= (np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-8) # l2-normalise each row
+        pil_batch = [_dino_preprocess(c) for c in img_crops[i:i + batch_size]]
+        vecs = _dino_embed_batch(pil_batch)
+        vecs /= (np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-8)
         out.extend(v.tolist() for v in vecs)
     return out
 
@@ -325,53 +368,68 @@ async def run_yolo(video_name: str, payload: dict = Body(...)):
         with open(cache_path) as f:
             raw_cache = {int(k): v for k, v in json.load(f).items()}
 
-    # filter out dets according to conf level set by user, then run bytetrack
-    tracker    = ByteTracker(track_thresh=conf_thres, match_thresh=match_thresh, max_lost=max_lost)
-
-    # load embedding cache if requested
-    use_embeddings = payload.get("use_embeddings", False)
-
-    frame_files = sorted(frames_dir.glob("*.jpg"))
-
-    def embed_frame_dets(frame_idx, dets):
-        # embed every chip in the frame
-        if frame_idx >= len(frame_files):
-            return dets
-        img = Image.open(frame_files[frame_idx]).convert("RGB") # convert once per frame, not per chip
-        valid, crops = [], []
-        for d in dets:
-            left, top   = max(0, int(d["xtl"])), max(0, int(d["ytl"]))
-            right, bot  = int(d["xbr"]), int(d["ybr"])
-            if right <= left or bot <= top: # if weird shape, leave them embedding-less
-                continue
-            valid.append(d)
-            crops.append(img.crop((left, top, right, bot)))
-        for i, (d, vec) in enumerate(zip(valid, embed_chips(crops))):
-            d["embedding"] = vec
-            print(f"embedding progress: {i}/{len(crops)} chips")
-        return dets
-
-    def embed_and_track():
-        result = {}
-        for frame_idx in sorted(raw_cache.keys()):
-            frame_dets = [d for d in raw_cache[frame_idx] if d["confidence"] >= conf_thres]
-            if not frame_dets:
-                continue
-            dets = [dict(d) for d in frame_dets]
-            if use_embeddings:
-                dets = embed_frame_dets(frame_idx, dets) # attach visual embeddings for re-id matching
-            # tracker adds 'track_id' to each det in-place
-            tracked = tracker.update(dets)
-            for d in tracked:
-                d.pop("embedding", None)
-            result[frame_idx] = tracked
-        return result
-
-    loop = asyncio.get_event_loop()
-    detections = await loop.run_in_executor(None, embed_and_track)
-
+    detections = {}
+    for frame_idx in sorted(raw_cache.keys()):
+        frame_dets = [d for d in raw_cache[frame_idx] if d["confidence"] >= conf_thres]
+        if frame_dets:
+            detections[frame_idx] = frame_dets
+ 
     detected_classes = list({d["class_name"] for dets in detections.values() for d in dets})
     return {"detections": detections, "classes": detected_classes}
+
+# run bytetrack with re-id
+@app.post("/track-reid/{video_name}")
+async def track_reid(video_name: str, payload: dict = Body(...)):
+    match_thresh = payload.get("match_thresh", 0.5)
+    max_lost     = payload.get("max_lost", 90)
+
+    ann_path = OUTPUT_DIR / video_name / "annotations.json"
+    if not ann_path.exists():
+        return {"error": "no annotations found. save the session first"}
+    cache_path = OUTPUT_DIR / video_name / EMBEDDINGS_CACHE_FILE
+    if not cache_path.exists():
+        return {"error": "no embeddings found. compute embeddings first, then track"}
+
+    emb_cache = load_embeddings_cache(cache_path) # {bbox_id: vec}, dim-guarded
+    if not emb_cache:
+        return {"error": "embedding cache is stale or empty. recompute embeddings first"}
+
+    with open(ann_path) as f:
+        data = json.load(f)
+    bboxes_by_frame = data.get("bboxesByFrame", {})
+
+    def track():
+        tracker = ByteTracker(track_thresh=0.0, match_thresh=match_thresh, max_lost=max_lost)
+        id_to_track = {}
+        for frame_idx in sorted(int(k) for k in bboxes_by_frame.keys()):
+            boxes = bboxes_by_frame[str(frame_idx)]
+            dets = []
+            for b in boxes:
+                bid = b.get("id")
+                if not bid:
+                    continue
+                dets.append({
+                    "class_name": b.get("className", "object"),
+                    "xtl": b.get("x", 0),
+                    "ytl": b.get("y", 0),
+                    "xbr": b.get("x", 0) + b.get("width", 0),
+                    "ybr": b.get("y", 0) + b.get("height", 0),
+                    "confidence": 1.0, 
+                    "bbox_id": bid, 
+                    "embedding": emb_cache.get(str(bid)), 
+                })
+            if not dets:
+                continue
+            tracked = tracker.update(dets)
+            for d in tracked:
+                tid = d.get("track_id")
+                if d.get("bbox_id") is not None and tid is not None:
+                    id_to_track[d["bbox_id"]] = tid
+        return id_to_track
+
+    loop = asyncio.get_event_loop()
+    id_to_track = await loop.run_in_executor(None, track)
+    return {"track_ids": id_to_track, "tracked_count": len(id_to_track)}
 
 # propagate a single manually-drawn box forward with a csrt tracker.
 @app.post("/propagate/{video_name}")
@@ -938,8 +996,12 @@ async def compute_embeddings(video_name: str, payload: dict = Body(...)):
 
 # load embeddings from .npz cache and return dict of k=bbox_id, v=np.array
 def load_embeddings_cache(cache_path: Path) -> dict:
-    data = np.load(cache_path, allow_pickle=True)
-    return {str(bid): vec for bid, vec in zip(data["ids"], data["embeddings"])}
+    data = np.load(cache_path)
+    embs = data["embeddings"]
+    if embs.ndim != 2 or embs.shape[1] != EMBED_DIM: # stale osnet cache (512-d), refuse it
+        print(f"embedding cache at {cache_path} has dim {embs.shape[1:] } != {EMBED_DIM}, ignoring (will recompute)")
+        return {}
+    return {str(bid): vec for bid, vec in zip(data["ids"], embs)}
 
 # check if embedding cache exists for a video
 @app.get("/embeddings-status/{video_name}")
