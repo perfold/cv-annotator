@@ -285,7 +285,7 @@ function LeftSidebar() {
             >
               {isRunningYolo ? "Running…" : "Run YOLOv7-tiny"}
             </button>
-            {/* run bytetrack with visual re-id — embeds detections live from frames, so it works on a fresh video in one press (builds the yolo cache itself if needed) */}
+            {/* run bytetrack with visual re-id */}
             <button
               style={{ width: "100%", marginTop: 4 }}
               tabIndex={-1}
@@ -294,14 +294,14 @@ function LeftSidebar() {
             >
               {isRunningYolo ? "Running…" : "Run Tracking + Re-ID"}
             </button>
-            {/* run sam2.1 to snap every box in this frame tighter */}
+            {/* run fastsam-s to snap every box in this frame into a polygon */}
             <button
               style={{ width: "100%", marginTop: 4 }}
               tabIndex={-1}
               disabled={!videoName || isTightening}
               onClick={() => samTightenFrame()}
             >
-              {isTightening ? "Tightening…" : "Run SAM 2.1 (Tighten Frame)"}
+              {isTightening ? "Tightening…" : "Run FastSAM (Polygon)"}
             </button>
           </div>
         </div>

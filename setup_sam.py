@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 
 MODELS_DIR = Path(__file__).parent / "models"
-SAM_NAME   = "sam2.1_t.pt"
+SAM_NAME   = "FastSAM-x.pt"
 TARGET     = MODELS_DIR / SAM_NAME
 
 def main():
@@ -14,12 +14,12 @@ def main():
         return
 
     try:
-        from ultralytics import SAM
+        from ultralytics import FastSAM
     except ImportError:
         sys.exit("ultralytics not installed. run: pip install ultralytics")
 
     print(f"downloading {SAM_NAME} via ultralytics (resolves the correct release automatically)...")
-    SAM(SAM_NAME)
+    FastSAM(SAM_NAME)
 
     from ultralytics.utils import SETTINGS
     candidates = [Path(SAM_NAME), Path(SETTINGS["weights_dir"]) / SAM_NAME]

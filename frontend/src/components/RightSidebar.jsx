@@ -215,7 +215,7 @@ function RightSidebar({ OUTLIER_COLOR }) {
               }}
             >
               <span style={{ fontSize: 11, color: "#aaa" }}>
-                Embeddings (OSnet)
+                Embeddings (Dinov3 ConvNext Base)
               </span>
               {/* status indicator: idle/computing/ready */}
               <span

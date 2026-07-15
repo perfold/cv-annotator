@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from transformers import AutoImageProcessor, AutoModel
-from ultralytics import SAM
+from ultralytics import FastSAM
 
 # paths
 BASE_DIR     = Path(__file__).parent.parent
@@ -46,12 +46,12 @@ model = ckpt['model'].float().fuse().eval()
 names  = model.module.names if hasattr(model, "module") else model.names
 stride = int(model.stride.max())
 
-# load SAM
-SAM_WEIGHTS = MODELS_DIR / "sam2.1_t.pt" # load sam2.1-tiny
+# load FastSAM
+SAM_WEIGHTS = MODELS_DIR / "FastSAM-x.pt" 
 if not SAM_WEIGHTS.exists():
-    raise RuntimeError(f"SAM2.1 weights not found at {SAM_WEIGHTS}. Pre-download sam2.1_t.pt into models/.")
+    raise RuntimeError(f"FastSAM weights not found at {SAM_WEIGHTS}. Pre-download FastSAM-x.pt into models/.")
 
-sam = SAM(str(SAM_WEIGHTS))
+sam = FastSAM(str(SAM_WEIGHTS))
 
 EMBEDDINGS_CACHE_FILE = "embeddings.npz" # {bbox_id: [float, ...]} per video
 
@@ -556,21 +556,21 @@ async def sam_tighten(video_name: str, payload: dict = Body(...)):
     frames_dir = OUTPUT_DIR / video_name
     frame_files = sorted(frames_dir.glob("*.jpg"))
     n_frames = len(frame_files)
-
+ 
     frame_idx = int(payload["frame_idx"])
     boxes = payload["boxes"] 
-
+ 
     if frame_idx < 0 or frame_idx >= n_frames:
         return {"error": "frame_idx out of range"}
     if not boxes:
         return {"boxes": [], "tightened": 0}
-
+ 
     def run_tighten():
         img = cv2.imread(str(frame_files[frame_idx]))
         if img is None:
             return [], "could not read frame"
         img_h, img_w = img.shape[:2]
-
+ 
         prompt_boxes, kept = [], []
         for bb in boxes:
             x, y = float(bb["x"]), float(bb["y"])
@@ -581,23 +581,41 @@ async def sam_tighten(video_name: str, payload: dict = Body(...)):
                 continue
             prompt_boxes.append([px1, py1, px2, py2]) 
             kept.append(bb)
-
+ 
         if not prompt_boxes:
             return [], "ok"
-        
-        res = sam(img, bboxes=prompt_boxes, device=device, retina_masks=True, verbose=False)[0]
-
-        if res.masks is None:
-            print(f"[sam] res.masks is None, sam returned no masks for {len(prompt_boxes)} box prompts")
-            return [{**bb} for bb in kept], "ok"
-        masks = res.masks.data.cpu().numpy() # (N, H, W), one mask per prompt box
+ 
+        # segment the whole frame once
+        seg = sam(img, device=device, retina_masks=True, verbose=False)[0]
 
         out = []
-        for bb, m in zip(kept, masks):
-            mask_u8 = (m > 0.5).astype(np.uint8) 
+        if seg.masks is None:
+            print("[fastsam] seg.masks is None, no masks for whole frame")
+            return [{**bb, "polygon": None} for bb in kept], "ok" # nothing found, hand every box back
+
+        masks = seg.masks.data.cpu().numpy() # (M, H, W), every mask fastsam found in the frame
+        # precompute masks and their areas once, reused across all boxes
+        mbin = masks > 0.5
+        mask_areas = mbin.reshape(mbin.shape[0], -1).sum(axis=1).astype(np.float64)
+
+        for bb, pbox in zip(kept, prompt_boxes):
+            bx1, by1, bx2, by2 = (int(round(v)) for v in pbox)
+            box_area = float((bx2 - bx1) * (by2 - by1))
+
+            # iou of the prompt box against every mask: intersection is the mask's pixels inside the box
+            inter = mbin[:, by1:by2, bx1:bx2].reshape(mbin.shape[0], -1).sum(axis=1).astype(np.float64)
+            union = box_area + mask_areas - inter
+            ious = np.where(union > 0, inter / union, 0.0)
+
+            best = int(np.argmax(ious))
+            if ious[best] <= 0: # no mask overlaps this box at all
+                out.append({**bb, "polygon": None}) # fastsam found nothing here, hand box back with no polygon
+                continue
+
+            mask_u8 = mbin[best].astype(np.uint8)
             cnts, _ = cv2.findContours(mask_u8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             if not cnts:
-                out.append({**bb, "polygon": None}) # sam found nothing, hand box back with no polygon
+                out.append({**bb, "polygon": None}) # mask has no contour, so return no polygon
                 continue
 
             c = max(cnts, key=cv2.contourArea) # largest contour = the object
@@ -613,7 +631,7 @@ async def sam_tighten(video_name: str, payload: dict = Body(...)):
             })
 
         return out, "ok"
-
+ 
     loop = asyncio.get_event_loop()
     result, status = await loop.run_in_executor(None, run_tighten)
     if status != "ok":
