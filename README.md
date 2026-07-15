@@ -28,7 +28,7 @@ annotation-tool/
 │   └── requirements.txt
 ├── models/
 │   ├── yolov7/                             Trimmed YOLOv7 repo
-│   └── yolov7-tiny-visdrone.pt             Finetuned VisDrone weights
+│   └── yolov7-tiny-visdrone-grouped.pt             Finetuned VisDrone weights
 ├── data/
 │   ├── input/                              uploaded videos
 │   └── output/                             extracted frames + annotations per video
@@ -54,7 +54,7 @@ annotation-tool/
 
 The finetuned YOLOv7-tiny weights (`yolov7-tiny-visdrone.pt`) are included in the `models/` folder and trained on the [VisDrone2019](https://github.com/VisDrone/VisDrone-Dataset) dataset. No download needed.
 
-The model is a finetuned version of [YOLOv7-tiny](https://github.com/WongKinYiu/yolov7) by WongKinYiu, trained to detect the following VisDrone classes: `pedestrian`, `people`, `bicycle`, `car`, `van`, `truck`, `tricycle`, `awning-tricycle`, `bus`, `motor`, `others`.
+The model is a finetuned version of [YOLOv7-tiny](https://github.com/WongKinYiu/yolov7) by WongKinYiu, trained to detect the following classes: `human`, `2-wheeler`, `3-wheeler`, `small-vehicle`, `bus`, `truck`.
 
 The trimmed YOLOv7 repo is also already included at `models/yolov7/`.
 
@@ -96,14 +96,7 @@ Adjusting Conf/Match/Max lost and re-running skips inference and only re-runs th
 
 Run via the **Run Tracking + Re-ID** button in the Models panel (left sidebar).
 
-This runs the same ByteTrack pipeline as Run YOLOv7-tiny, but additionally embeds each
-detection with OSNet and blends visual similarity into the association
-cost. This helps keep track IDs stable through crossings and brief overlaps, where
-IoU-only tracking tends to swap IDs.
-
-It works on a fresh video in one press. It builds the YOLO cache itself if needed, so
-there is no separate prerequisite step. Embeddings are computed live from the frames
-during tracking; the plain Run YOLOv7-tiny button does not embed and stays fast.
+This runs the ByteTrack with re-ID on all the frames. It requires the embeddings to be computed first via the **Compute Embeddings** button.
 
 **Note:** embedding every detection is significantly slower than plain tracking, especially
 on CPU. GPU is strongly recommended for long footage.
@@ -166,7 +159,7 @@ Flagged bboxes are highlighted in **amber (#ffcc00)** on the canvas and marked w
 | Embedding  | Flags a bbox that is BOTH visually unlike other bboxes of its class AND not anchored to a real track. Visual distance is the OSNet cosine distance to the nearest same-class neighbour, flagged when it exceeds the class median by k MADs. Requires Compute Embeddings to have been run; tiny chips and manually drawn boxes are not flagged. | Sens slider (2.0–8.0, default 4.0; higher = stricter) |
 | Rare class | Flags all bboxes of a class that appears in suspiciously few frames - likely a misclick or misclassification                                                                                                                                                                                                                                   | Rare % slider (0.1–5.0%, default 1.0%)                |
 
-The Embedding rule requires OSNet embeddings to be computed first via the **Compute Embeddings**
+The Embedding rule requires DinoV3 ConvNeXt embeddings to be computed first via the **Compute Embeddings**
 button (same panel). The status indicator shows idle / computing / ready. The Rare class rule
 works without embeddings.
 
@@ -259,7 +252,7 @@ works without embeddings.
 - [x] Outlier detection algorithm based on annotated classes to identify which annotations for that class could be wrong.
 - [x] Embedding-based outlier detection (OSNet visual distance, gated by track isolation).
 - [x] Visual re-ID for tracking (OSNet embeddings blended into ByteTrack association).
-- [ ] Use (any variant of) SAM (https://github.com/facebookresearch/segment-anything) to tighten bounding boxes on demand for all bboxes in a frame.
+- [x] Use (any variant of) SAM (https://github.com/facebookresearch/segment-anything) to tighten bounding boxes on demand for all bboxes in a frame.
 - [x] Summarise the class label distribution stats for each project/ across all projects and export in csv format.
 - [x] Extract and export bbox target chips by saving them in respective class folders.
 

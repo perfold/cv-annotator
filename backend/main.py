@@ -550,9 +550,9 @@ def _iou(a, b):
     union = a[2] * a[3] + b[2] * b[3] - inter
     return inter / (union + 1e-7)
 
-# tighten every box in one frame by prompting sam2.1 with each box
-@app.post("/sam-tighten/{video_name}")
-async def sam_tighten(video_name: str, payload: dict = Body(...)):
+# tighten every box in one frame into a polygon with fastsam
+@app.post("/sam-polygon-tighten/{video_name}")
+async def sam_polygon_tighten(video_name: str, payload: dict = Body(...)):
     frames_dir = OUTPUT_DIR / video_name
     frame_files = sorted(frames_dir.glob("*.jpg"))
     n_frames = len(frame_files)
@@ -632,6 +632,102 @@ async def sam_tighten(video_name: str, payload: dict = Body(...)):
 
         return out, "ok"
  
+    loop = asyncio.get_event_loop()
+    result, status = await loop.run_in_executor(None, run_tighten)
+    if status != "ok":
+        return {"error": status}
+    return {"boxes": result, "tightened": len(result)}
+
+# tighten yolo bboxes using fastsam
+@app.post("/sam-box-tighten/{video_name}")
+async def sam_box_tighten(video_name: str, payload: dict = Body(...)):
+    frames_dir = OUTPUT_DIR / video_name
+    frame_files = sorted(frames_dir.glob("*.jpg"))
+    n_frames = len(frame_files)
+
+    frame_idx = int(payload["frame_idx"])
+    boxes = payload["boxes"]
+
+    if frame_idx < 0 or frame_idx >= n_frames:
+        return {"error": "frame_idx out of range"}
+    if not boxes:
+        return {"boxes": [], "tightened": 0}
+
+    def run_tighten():
+        img = cv2.imread(str(frame_files[frame_idx]))
+        if img is None:
+            return [], "could not read frame"
+        img_h, img_w = img.shape[:2]
+
+        prompt_boxes, kept = [], []
+        for bb in boxes:
+            x, y = float(bb["x"]), float(bb["y"])
+            w, h = float(bb["width"]), float(bb["height"])
+            px1, py1 = max(0, x), max(0, y)
+            px2, py2 = min(img_w, x + w), min(img_h, y + h)
+            if px2 - px1 < 1 or py2 - py1 < 1:
+                continue
+            prompt_boxes.append([px1, py1, px2, py2])
+            kept.append(bb)
+
+        if not prompt_boxes:
+            return [], "ok"
+
+        # segment the whole frame once
+        seg = sam(img, device=device, retina_masks=True, verbose=False)[0]
+
+        out = []
+        if seg.masks is None:
+            print("[fastsam] seg.masks is None, no masks for whole frame")
+            return [{**bb} for bb in kept], "ok" # nothing found, hand every box back untouched
+
+        masks = seg.masks.data.cpu().numpy() # every mask fastsam found in the frame
+        mbin = masks > 0.5
+        mask_areas = mbin.reshape(mbin.shape[0], -1).sum(axis=1).astype(np.float64)
+
+        for bb, pbox in zip(kept, prompt_boxes):
+            ox1, oy1, ox2, oy2 = pbox 
+            bx1, by1, bx2, by2 = (int(round(v)) for v in pbox)
+            box_area = float((bx2 - bx1) * (by2 - by1))
+
+            # iou of the prompt box against every mask
+            inter = mbin[:, by1:by2, bx1:bx2].reshape(mbin.shape[0], -1).sum(axis=1).astype(np.float64)
+            union = box_area + mask_areas - inter
+            ious = np.where(union > 0, inter / union, 0.0)
+
+            best = int(np.argmax(ious))
+            if ious[best] <= 0: # no mask overlaps this box at all
+                out.append({**bb}) # fastsam found nothing here, hand the box back untouched
+                continue
+
+            mask_u8 = mbin[best].astype(np.uint8)
+            cnts, _ = cv2.findContours(mask_u8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if not cnts:
+                out.append({**bb}) # no contour, leave box as-is
+                continue
+
+            c = max(cnts, key=cv2.contourArea) # largest contour = the object
+            mx, my, mw, mh = cv2.boundingRect(c) # axis-aligned bounds of the mask, in frame pixels
+
+            # clamp the mask bounds to the original box so tightening only ever pulls the edges inwards, prevents a mask that spills past the yolo box (shadow, nearby object) enlarging it
+            tx1 = max(ox1, float(mx))
+            ty1 = max(oy1, float(my))
+            tx2 = min(ox2, float(mx + mw))
+            ty2 = min(oy2, float(my + mh))
+
+            if tx2 - tx1 < 1 or ty2 - ty1 < 1:
+                out.append({**bb}) 
+                continue
+
+            out.append({
+                "id": bb["id"],
+                "x": tx1, "y": ty1,
+                "width": tx2 - tx1, "height": ty2 - ty1,
+                "polygon": None, # pure box tighten, explicitly clear any stale polygon on this box
+            })
+
+        return out, "ok"
+
     loop = asyncio.get_event_loop()
     result, status = await loop.run_in_executor(None, run_tighten)
     if status != "ok":

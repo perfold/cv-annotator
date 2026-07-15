@@ -50,7 +50,8 @@ const useStore = create((set, get) => ({
   isRunningYolo: false,
   isPropagating: false, // csrt box propagation in progress
   isMarkingFa: false, // csrt fa track-marking in progress
-  isTightening: false, // sam2.1 bbox tightening in progress (one frame at a time)
+  isPolygonTightening: false, // fastsam bbox tightening to polygon
+  isBoxTightening: false, // fastsam bbox tightening to rect
   faMatchClass: true, // fa track only tags same-class boxes; toggle off for label-flickering FAs (car/van/truck)
   matchThresh: 0.5, // bytetrack settings
   maxLost: 90,
@@ -467,8 +468,8 @@ const useStore = create((set, get) => ({
     }
   },
 
-  // run sam2.1 on every box in the current frame to snap them tighter to the actual object.
-  samTightenFrame: async (optionalClasses = null) => {
+  // run fastsam to tighten the bboxes into polygons
+  samPolygonTighten: async (optionalClasses = null) => {
     const { videoName, currentFrame, bboxesByFrame, imageDims } = get();
     if (!videoName) return;
 
@@ -489,10 +490,10 @@ const useStore = create((set, get) => ({
     const scaleX = dispW / origW;
     const scaleY = dispH / origH;
 
-    set({ isTightening: true });
+    set({ isPolygonTightening: true });
     try {
       const res = await fetch(
-        `http://localhost:8000/sam-tighten/${videoName}`,
+        `http://localhost:8000/sam-polygon-tighten/${videoName}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -541,7 +542,73 @@ const useStore = create((set, get) => ({
       console.error(err);
       alert("SAM tighten failed. Check the console.");
     } finally {
-      set({ isTightening: false });
+      set({ isPolygonTightening: false });
+    }
+  },
+
+  // run fastsam on every box in the current frame and snap them to a pure tightened rect (not polygon).
+  samBoxTighten: async (optionalClasses = null) => {
+    const { videoName, currentFrame, bboxesByFrame, imageDims } = get();
+    if (!videoName) return;
+
+    const frameBboxes = bboxesByFrame[currentFrame] ?? [];
+    const targets = optionalClasses
+      ? frameBboxes.filter((b) => optionalClasses.includes(b.className))
+      : frameBboxes;
+    if (targets.length === 0) {
+      alert("No boxes on this frame to tighten.");
+      return;
+    }
+
+    const { origW, origH, dispW, dispH } = imageDims;
+    if (!origW || !dispW) {
+      alert("Load a video first.");
+      return;
+    }
+    const scaleX = dispW / origW;
+    const scaleY = dispH / origH;
+
+    set({ isBoxTightening: true });
+    try {
+      const res = await fetch(
+        `http://localhost:8000/sam-box-tighten/${videoName}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            frame_idx: currentFrame,
+            boxes: targets.map((b) => ({
+              id: b.id,
+              x: b.x / scaleX,
+              y: b.y / scaleY,
+              width: b.width / scaleX,
+              height: b.height / scaleY,
+            })),
+          }),
+        },
+      );
+      const data = await res.json();
+      if (data.error) {
+        alert(`Box tighten failed: ${data.error}`);
+        return;
+      }
+
+      const updates = (data.boxes ?? []).map((b) => ({
+        id: b.id,
+        x: b.x * scaleX,
+        y: b.y * scaleY,
+        width: b.width * scaleX,
+        height: b.height * scaleY,
+        polygon: null,
+      }));
+      if (updates.length === 0) return;
+
+      get().updateBboxes(updates);
+    } catch (err) {
+      console.error(err);
+      alert("Box tighten failed. Check the console.");
+    } finally {
+      set({ isBoxTightening: false });
     }
   },
 

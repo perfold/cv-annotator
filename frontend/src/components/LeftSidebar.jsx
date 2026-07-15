@@ -17,7 +17,10 @@ function LeftSidebar() {
     videoName,
     isRunningYolo,
     isExtracting,
-    isTightening,
+    samPolygonTighten,
+    isPolygonTightening,
+    samBoxTighten,
+    isBoxTightening,
     addClass,
     deleteClass,
     addTag,
@@ -25,7 +28,6 @@ function LeftSidebar() {
     toggleBboxTag,
     runYolo,
     runTrackingWithReId,
-    samTightenFrame,
   } = useStore((s) => s);
 
   const frameBboxes = bboxesByFrame[currentFrame] ?? [];
@@ -294,14 +296,23 @@ function LeftSidebar() {
             >
               {isRunningYolo ? "Running…" : "Run Tracking + Re-ID"}
             </button>
-            {/* run fastsam-s to snap every box in this frame into a polygon */}
+            {/* run fastsam to snap every box in this frame to a tightened rect */}
             <button
               style={{ width: "100%", marginTop: 4 }}
               tabIndex={-1}
-              disabled={!videoName || isTightening}
-              onClick={() => samTightenFrame()}
+              disabled={!videoName || isBoxTightening}
+              onClick={() => samBoxTighten()}
             >
-              {isTightening ? "Tightening…" : "Run FastSAM (Polygon)"}
+              {isBoxTightening ? "Tightening…" : "Run FastSAM (Tighten Boxes)"}
+            </button>
+            {/* run fastsam to snap every box in this frame into a polygon */}
+            <button
+              style={{ width: "100%", marginTop: 4 }}
+              tabIndex={-1}
+              disabled={!videoName || isPolygonTightening}
+              onClick={() => samPolygonTighten()}
+            >
+              {isPolygonTightening ? "Tightening…" : "Run FastSAM (Polygon)"}
             </button>
           </div>
         </div>
