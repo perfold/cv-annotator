@@ -26,6 +26,7 @@ function AnnotationCanvas({
   updateBboxes,
   onDimsReady,
   outlierBboxIds,
+  outlierColor = "#ff00ff",
 }) {
   // refs and states
   const containerRef = useRef();
@@ -461,10 +462,12 @@ function AnnotationCanvas({
                     y={0}
                     width={b.width}
                     height={b.height}
-                    stroke={outlierBboxIds?.includes(b.id) ? "#ffcc00" : color}
-                    strokeWidth={isSelected ? 6 : 2} // thickens line when box is highlighted
+                    stroke={
+                      outlierBboxIds?.includes(b.id) ? outlierColor : color
+                    }
+                    strokeWidth={isSelected ? 8 : 2} // thickens line when box is highlighted
                     fill={
-                      (outlierBboxIds?.includes(b.id) ? "#ffcc00" : color) +
+                      (outlierBboxIds?.includes(b.id) ? outlierColor : color) +
                       (isFa ? "55" : "25") // denser fill for fa so it reads as struck out
                     }
                   />
@@ -474,10 +477,12 @@ function AnnotationCanvas({
                   <Line
                     points={b.polygon.flat()}
                     closed
-                    stroke={outlierBboxIds?.includes(b.id) ? "#ffcc00" : color}
-                    strokeWidth={isSelected ? 6 : 2}
+                    stroke={
+                      outlierBboxIds?.includes(b.id) ? outlierColor : color
+                    }
+                    strokeWidth={isSelected ? 8 : 2}
                     fill={
-                      (outlierBboxIds?.includes(b.id) ? "#ffcc00" : color) +
+                      (outlierBboxIds?.includes(b.id) ? outlierColor : color) +
                       (isFa ? "55" : "25")
                     }
                   />
@@ -488,7 +493,7 @@ function AnnotationCanvas({
                     <Line
                       points={[0, 0, b.width, b.height]}
                       stroke={
-                        outlierBboxIds?.includes(b.id) ? "#ffcc00" : color
+                        outlierBboxIds?.includes(b.id) ? outlierColor : color
                       }
                       strokeWidth={2}
                       listening={false}
@@ -496,7 +501,7 @@ function AnnotationCanvas({
                     <Line
                       points={[b.width, 0, 0, b.height]}
                       stroke={
-                        outlierBboxIds?.includes(b.id) ? "#ffcc00" : color
+                        outlierBboxIds?.includes(b.id) ? outlierColor : color
                       }
                       strokeWidth={2}
                       listening={false}

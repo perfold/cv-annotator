@@ -8,7 +8,7 @@ import RightSidebar from "./components/RightSidebar";
 import ContextMenu from "./components/ContextMenu";
 import ProjectModal from "./components/ProjectModal";
 
-const OUTLIER_COLOR = "#ffcc00";
+const OUTLIER_COLOR = "#ff00ff"; // magenta: deliberately far from any class colour or the #750000 accent
 
 function App() {
   // shortcut (ctrl z,y,c,v) states
@@ -287,6 +287,7 @@ function App() {
               updateBboxes={updateBboxes}
               onDimsReady={(dims) => useStore.setState({ imageDims: dims })}
               outlierBboxIds={outliers.map((o) => o.bbox_id)}
+              outlierColor={OUTLIER_COLOR}
             />{" "}
             {/* calls fastAPI for image */}
             <VideoScrubber

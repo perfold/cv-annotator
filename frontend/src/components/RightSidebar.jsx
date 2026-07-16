@@ -45,19 +45,25 @@ function RightSidebar({ OUTLIER_COLOR }) {
                 <li
                   key={b.id}
                   title={b.id}
+                  onClick={() => useStore.setState({ selectedBboxIds: [b.id] })}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     openContextMenu(e.clientX, e.clientY, b.id);
                   }}
                   style={{
-                    background: outliers.some((o) => o.bbox_id === b.id)
-                      ? `${OUTLIER_COLOR}22` // subtle highlight if flagged
-                      : selectedBboxIds.includes(b.id)
-                        ? "#333"
+                    cursor: "pointer",
+                    background: selectedBboxIds.includes(b.id)
+                      ? outliers.some((o) => o.bbox_id === b.id)
+                        ? `${OUTLIER_COLOR}55`
+                        : "#333"
+                      : outliers.some((o) => o.bbox_id === b.id)
+                        ? `${OUTLIER_COLOR}22`
                         : "transparent",
                     border: outliers.some((o) => o.bbox_id === b.id)
                       ? `1px solid ${OUTLIER_COLOR}`
-                      : "1px solid transparent",
+                      : selectedBboxIds.includes(b.id)
+                        ? "1px solid #666"
+                        : "1px solid transparent",
                     borderRadius: 3,
                     marginBottom: 2,
                   }}
@@ -95,7 +101,10 @@ function RightSidebar({ OUTLIER_COLOR }) {
                     </span>
                   ))}
                   <button
-                    onClick={() => deleteBbox(b.id)}
+                    onClick={(e) => {
+                      e.stopPropagation(); // don't let the row's onClick re-select a box we're deleting
+                      deleteBbox(b.id);
+                    }}
                     style={{ marginLeft: 4 }}
                   >
                     x
@@ -292,7 +301,10 @@ function RightSidebar({ OUTLIER_COLOR }) {
                   <li
                     key={i}
                     onClick={() =>
-                      useStore.setState({ currentFrame: o.frame_idx })
+                      useStore.setState({
+                        currentFrame: o.frame_idx,
+                        selectedBboxIds: [o.bbox_id],
+                      })
                     }
                     style={{
                       cursor: "pointer",
