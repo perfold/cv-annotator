@@ -770,6 +770,37 @@ const useStore = create((set, get) => ({
     });
   },
 
+  // tag every bbox detected as a potential outlier as 'outlier' at once
+  confirmAllOutliers: () => {
+    const { bboxesByFrame, outliers, tags, pushHistory } = get();
+    const OUTLIER_TAG = "outlier";
+
+    if (outliers.length === 0) {
+      alert("No outliers to tag. Run a scan first.");
+      return;
+    }
+
+    pushHistory();
+
+    const nextTags = tags.includes(OUTLIER_TAG) ? tags : [...tags, OUTLIER_TAG];
+    const idsToTag = new Set(outliers.map((o) => o.bbox_id));
+
+    const next = {};
+    for (const [frameIdxStr, boxes] of Object.entries(bboxesByFrame)) {
+      next[frameIdxStr] = boxes.map((b) => {
+        if (!idsToTag.has(b.id)) return b;
+        if ((b.tags ?? []).includes(OUTLIER_TAG)) return b; // already tagged, leave as-is
+        return { ...b, tags: [...(b.tags ?? []), OUTLIER_TAG] };
+      });
+    }
+
+    set({
+      tags: nextTags,
+      bboxesByFrame: next,
+      outliers: [], // clear list of outliers
+    });
+  },
+
   // delete every box tagged "outlier" across all frames
   removeAllOutliers: () => {
     const { bboxesByFrame, pushHistory } = get();

@@ -438,11 +438,10 @@ function AnnotationCanvas({
                     if (mode !== "select") return;
                     e.cancelBubble = true;
                     if (e.evt.shiftKey) {
-                      // shift+click: toggle this box in/out of selection
-                      setSelectedBboxIds((prev) =>
-                        prev.includes(b.id)
-                          ? prev.filter((id) => id !== b.id)
-                          : [...prev, b.id],
+                      setSelectedBboxIds(
+                        selectedBboxIds.includes(b.id)
+                          ? selectedBboxIds.filter((id) => id !== b.id)
+                          : [...selectedBboxIds, b.id],
                       );
                     } else {
                       // left click, no shift: select only this box

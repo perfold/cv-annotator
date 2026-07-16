@@ -14,6 +14,7 @@ function RightSidebar({ OUTLIER_COLOR }) {
     openContextMenu,
     deleteBbox,
     scanOutliers,
+    confirmAllOutliers,
     computeEmbeddings,
     removeAllFa,
     hideAllBboxes,
@@ -334,6 +335,14 @@ function RightSidebar({ OUTLIER_COLOR }) {
               >
                 {outliers.length} outlier{outliers.length > 1 ? "s" : ""} found
               </p>
+              {/* tag every listed outlier at once */}
+              <button
+                style={{ width: "100%", marginBottom: 4 }}
+                tabIndex={-1}
+                onClick={confirmAllOutliers}
+              >
+                Tag ALL as outlier
+              </button>
               <ul
                 style={{
                   listStyle: "none",
