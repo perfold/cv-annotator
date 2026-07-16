@@ -17,6 +17,7 @@ function ContextMenu() {
     markFaTrack,
     isMarkingFa,
     faMatchClass,
+    confirmOutlier,
   } = useStore((s) => s);
 
   const menuRef = useRef(null);
@@ -250,6 +251,26 @@ function ContextMenu() {
                 style={{ pointerEvents: "none" }}
               />
               same class only
+            </div>
+          </div>
+          <div style={{ borderTop: "1px solid #333" }}>
+            {/* tag bbox as outlier */}
+            <div
+              onClick={() => {
+                confirmOutlier(contextMenu.bboxId);
+                useStore.setState({ contextMenu: null });
+              }}
+              style={{
+                padding: "6px 12px",
+                cursor: "pointer",
+                color: "#ff00ff",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "#333")}
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.background = "transparent")
+              }
+            >
+              Mark as outlier (G)
             </div>
           </div>
           <div style={{ borderTop: "1px solid #333" }}>

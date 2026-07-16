@@ -23,6 +23,7 @@ const DEFAULT_TAGS = [
   "cut-off",
   "image-error",
   "false-alarm",
+  "outlier",
 ]; // default tags
 
 const QUALITY_PRESETS = { low: 31, medium: 15, high: 1 }; // extracted frames' jpg quality

@@ -78,6 +78,7 @@ function App() {
       classes: snap.classes,
       classColors: snap.classColors,
       tags: snap.tags,
+      outliers: snap.outliers,
     });
   }
 
@@ -91,6 +92,7 @@ function App() {
       classes: snap.classes,
       classColors: snap.classColors,
       tags: snap.tags,
+      outliers: snap.outliers,
     });
   }
 
@@ -125,8 +127,8 @@ function App() {
 
   // keep stateRef current
   useEffect(() => {
-    stateRef.current = { bboxesByFrame, classes, classColors, tags };
-  }, [bboxesByFrame, classes, classColors, tags]);
+    stateRef.current = { bboxesByFrame, classes, classColors, tags, outliers };
+  }, [bboxesByFrame, classes, classColors, tags, outliers]);
 
   // autosave annotations, only autosave if new bboxes drawn
   useEffect(() => {

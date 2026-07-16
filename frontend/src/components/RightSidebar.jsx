@@ -18,6 +18,7 @@ function RightSidebar({ OUTLIER_COLOR }) {
     removeAllFa,
     hideAllBboxes,
     showOnlyFlagged,
+    removeAllOutliers,
   } = useStore((s) => s);
 
   const frameBboxes = bboxesByFrame[currentFrame] ?? [];
@@ -150,20 +151,31 @@ function RightSidebar({ OUTLIER_COLOR }) {
           </button>
         </div>
 
-        {/* false-alarm removal, deletes every box tagged "false-alarm" */}
         <div
           style={{
             borderTop: "1px solid #ccc",
             flexShrink: 0,
+            display: "flex",
+            gap: 4,
           }}
         >
+          {/* false-alarm removal, deletes every box tagged "false-alarm" */}
           <button
-            style={{ width: "100%" }}
+            style={{ flex: 1 }}
             tabIndex={-1}
             disabled={!videoName}
             onClick={removeAllFa}
           >
             Remove all FA
+          </button>
+          {/* remove outlier button */}
+          <button
+            style={{ flex: 1 }}
+            tabIndex={-1}
+            disabled={!videoName}
+            onClick={removeAllOutliers}
+          >
+            Remove all Outliers
           </button>
         </div>
 

@@ -747,6 +747,59 @@ const useStore = create((set, get) => ({
     set({ bboxesByFrame: next });
   },
 
+  // confirm a flagged outlier as an outlier
+  confirmOutlier: (bboxId) => {
+    const { currentFrame, bboxesByFrame, outliers, tags, pushHistory } = get();
+    const OUTLIER_TAG = "outlier";
+
+    pushHistory();
+
+    const nextTags = tags.includes(OUTLIER_TAG) ? tags : [...tags, OUTLIER_TAG];
+
+    set({
+      tags: nextTags,
+      bboxesByFrame: {
+        ...bboxesByFrame,
+        [currentFrame]: (bboxesByFrame[currentFrame] ?? []).map((b) => {
+          if (b.id !== bboxId) return b;
+          if ((b.tags ?? []).includes(OUTLIER_TAG)) return b; // already tagged
+          return { ...b, tags: [...(b.tags ?? []), OUTLIER_TAG] };
+        }),
+      },
+      outliers: outliers.filter((o) => o.bbox_id !== bboxId), // remove from outlier list
+    });
+  },
+
+  // delete every box tagged "outlier" across all frames
+  removeAllOutliers: () => {
+    const { bboxesByFrame, pushHistory } = get();
+    const OUTLIER_TAG = "outlier";
+
+    let count = 0;
+    for (const boxes of Object.values(bboxesByFrame)) {
+      count += boxes.filter((b) => (b.tags ?? []).includes(OUTLIER_TAG)).length;
+    }
+    if (count === 0) {
+      alert("No boxes are tagged outlier.");
+      return;
+    }
+    if (
+      !window.confirm(
+        `Delete ${count} box${count === 1 ? "" : "es"} tagged outlier?`,
+      )
+    )
+      return;
+
+    pushHistory();
+    const next = {};
+    for (const [frameIdxStr, boxes] of Object.entries(bboxesByFrame)) {
+      next[frameIdxStr] = boxes.filter(
+        (b) => !(b.tags ?? []).includes(OUTLIER_TAG),
+      );
+    }
+    set({ bboxesByFrame: next });
+  },
+
   // bbox class changing functions
   changeClass: (id, newClassName) => {
     const { currentFrame, bboxesByFrame, pushHistory } = get();
