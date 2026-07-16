@@ -27,6 +27,8 @@ function AnnotationCanvas({
   onDimsReady,
   outlierBboxIds,
   outlierColor = "#ff00ff",
+  hideAllBboxes = false,
+  showOnlyFlagged = false,
 }) {
   // refs and states
   const containerRef = useRef();
@@ -348,183 +350,197 @@ function AnnotationCanvas({
             />
           )}
 
-          {frameBboxes.map((b) => {
-            const color = classColors[b.className] ?? "#ffffff";
-            const isSelected = selectedBboxIds.includes(b.id);
-            const isFa = (b.tags ?? []).includes("false-alarm"); // if false-alarm, draw a cross + more opague
-            return (
-              <Group
-                key={b.id}
-                x={b.x}
-                y={b.y}
-                ref={(el) => {
-                  if (el) nodeRefs.current[b.id] = el;
-                  else delete nodeRefs.current[b.id];
-                }}
-                // bbox dragging functions
-                draggable={mode === "select" && resizingId !== b.id}
-                listening={mode === "select"}
-                onMouseDown={(e) => {
-                  if (e.evt.ctrlKey) return;
-                  e.cancelBubble = true;
-                }}
-                onDragStart={(e) => {
-                  if (e.evt.ctrlKey) {
-                    e.target.stopDrag();
-                    return;
-                  } // prevent dragging of bbox when panning/dragging image
-                  e.cancelBubble = true;
-                  // if dragging an unselected box, select only it
-                  const currentSelection = selectedBboxIds.includes(b.id)
-                    ? selectedBboxIds
-                    : [b.id];
-                  if (!selectedBboxIds.includes(b.id))
-                    setSelectedBboxIds([b.id]);
-                  // record start positions for all selected boxes
-                  dragStartPositions.current = {};
-                  currentSelection.forEach((id) => {
-                    const node = nodeRefs.current[id];
-                    if (node)
-                      dragStartPositions.current[id] = {
-                        x: node.x(),
-                        y: node.y(),
-                      };
-                  });
-                }}
-                onDragMove={(e) => {
-                  e.cancelBubble = true;
-                  const start = dragStartPositions.current[b.id];
-                  if (!start) return;
-                  const dx = e.target.x() - start.x;
-                  const dy = e.target.y() - start.y;
-                  // move all other selected boxes together
-                  selectedBboxIds.forEach((id) => {
-                    if (id === b.id) return;
-                    const node = nodeRefs.current[id];
-                    const s = dragStartPositions.current[id];
-                    if (node && s) {
-                      node.x(s.x + dx);
-                      node.y(s.y + dy);
-                    }
-                  });
-                }}
-                onDragEnd={(e) => {
-                  e.cancelBubble = true;
-                  // batch update all selected boxes with their final positions
-                  const updates = selectedBboxIds
-                    .map((id) => {
+          {frameBboxes
+            .filter((b) => {
+              if (hideAllBboxes) return false;
+              if (!showOnlyFlagged) return true;
+              // filter on: keep only boxes that are a live outlier or carry the outlier/fa tag
+              const t = b.tags ?? [];
+              return (
+                outlierBboxIds?.includes(b.id) ||
+                t.includes("outlier") ||
+                t.includes("false-alarm")
+              );
+            })
+            .map((b) => {
+              const color = classColors[b.className] ?? "#ffffff";
+              const isSelected = selectedBboxIds.includes(b.id);
+              const isFa = (b.tags ?? []).includes("false-alarm"); // if false-alarm, draw a cross + more opague
+              return (
+                <Group
+                  key={b.id}
+                  x={b.x}
+                  y={b.y}
+                  ref={(el) => {
+                    if (el) nodeRefs.current[b.id] = el;
+                    else delete nodeRefs.current[b.id];
+                  }}
+                  // bbox dragging functions
+                  draggable={mode === "select" && resizingId !== b.id}
+                  listening={mode === "select"}
+                  onMouseDown={(e) => {
+                    if (e.evt.ctrlKey) return;
+                    e.cancelBubble = true;
+                  }}
+                  onDragStart={(e) => {
+                    if (e.evt.ctrlKey) {
+                      e.target.stopDrag();
+                      return;
+                    } // prevent dragging of bbox when panning/dragging image
+                    e.cancelBubble = true;
+                    // if dragging an unselected box, select only it
+                    const currentSelection = selectedBboxIds.includes(b.id)
+                      ? selectedBboxIds
+                      : [b.id];
+                    if (!selectedBboxIds.includes(b.id))
+                      setSelectedBboxIds([b.id]);
+                    // record start positions for all selected boxes
+                    dragStartPositions.current = {};
+                    currentSelection.forEach((id) => {
                       const node = nodeRefs.current[id];
-                      return node ? { id, x: node.x(), y: node.y() } : null;
-                    })
-                    .filter(Boolean);
-                  updateBboxes(updates);
-                  dragStartPositions.current = {};
-                }}
-                onClick={(e) => {
-                  if (mode !== "select") return;
-                  e.cancelBubble = true;
-                  if (e.evt.shiftKey) {
-                    // shift+click: toggle this box in/out of selection
-                    setSelectedBboxIds((prev) =>
-                      prev.includes(b.id)
-                        ? prev.filter((id) => id !== b.id)
-                        : [...prev, b.id],
-                    );
-                  } else {
-                    // left click, no shift: select only this box
+                      if (node)
+                        dragStartPositions.current[id] = {
+                          x: node.x(),
+                          y: node.y(),
+                        };
+                    });
+                  }}
+                  onDragMove={(e) => {
+                    e.cancelBubble = true;
+                    const start = dragStartPositions.current[b.id];
+                    if (!start) return;
+                    const dx = e.target.x() - start.x;
+                    const dy = e.target.y() - start.y;
+                    // move all other selected boxes together
+                    selectedBboxIds.forEach((id) => {
+                      if (id === b.id) return;
+                      const node = nodeRefs.current[id];
+                      const s = dragStartPositions.current[id];
+                      if (node && s) {
+                        node.x(s.x + dx);
+                        node.y(s.y + dy);
+                      }
+                    });
+                  }}
+                  onDragEnd={(e) => {
+                    e.cancelBubble = true;
+                    // batch update all selected boxes with their final positions
+                    const updates = selectedBboxIds
+                      .map((id) => {
+                        const node = nodeRefs.current[id];
+                        return node ? { id, x: node.x(), y: node.y() } : null;
+                      })
+                      .filter(Boolean);
+                    updateBboxes(updates);
+                    dragStartPositions.current = {};
+                  }}
+                  onClick={(e) => {
+                    if (mode !== "select") return;
+                    e.cancelBubble = true;
+                    if (e.evt.shiftKey) {
+                      // shift+click: toggle this box in/out of selection
+                      setSelectedBboxIds((prev) =>
+                        prev.includes(b.id)
+                          ? prev.filter((id) => id !== b.id)
+                          : [...prev, b.id],
+                      );
+                    } else {
+                      // left click, no shift: select only this box
+                      setSelectedBboxIds([b.id]);
+                    }
+                  }}
+                  onContextMenu={(e) => {
+                    e.evt.preventDefault();
+                    e.cancelBubble = true;
                     setSelectedBboxIds([b.id]);
-                  }
-                }}
-                onContextMenu={(e) => {
-                  e.evt.preventDefault();
-                  e.cancelBubble = true;
-                  setSelectedBboxIds([b.id]);
-                  openContextMenu(e.evt.clientX, e.evt.clientY, b.id);
-                }}
-                onMouseEnter={(e) => {
-                  if (mode === "select")
-                    e.target.getStage().container().style.cursor = "move";
-                }}
-                onMouseLeave={(e) => {
-                  e.target.getStage().container().style.cursor =
-                    mode === "draw" ? "crosshair" : "default";
-                }}
-                onDblClick={(e) => {
-                  if (mode !== "select") return;
-                  e.cancelBubble = true;
-                  setResizingId(b.id);
-                }}
-              >
-                {/* bbox */}
-                {!(b.polygon && b.polygon.length > 0) && (
-                  <Rect
-                    x={0}
-                    y={0}
-                    width={b.width}
-                    height={b.height}
-                    stroke={
-                      outlierBboxIds?.includes(b.id) ? outlierColor : color
-                    }
-                    strokeWidth={isSelected ? 8 : 2} // thickens line when box is highlighted
-                    fill={
-                      (outlierBboxIds?.includes(b.id) ? outlierColor : color) +
-                      (isFa ? "55" : "25") // denser fill for fa so it reads as struck out
-                    }
-                  />
-                )}
-                {/* sam segmentation polygon */}
-                {b.polygon && b.polygon.length > 0 && (
-                  <Line
-                    points={b.polygon.flat()}
-                    closed
-                    stroke={
-                      outlierBboxIds?.includes(b.id) ? outlierColor : color
-                    }
-                    strokeWidth={isSelected ? 8 : 2}
-                    fill={
-                      (outlierBboxIds?.includes(b.id) ? outlierColor : color) +
-                      (isFa ? "55" : "25")
-                    }
-                  />
-                )}
-                {/* fa cross */}
-                {isFa && (
-                  <>
-                    <Line
-                      points={[0, 0, b.width, b.height]}
+                    openContextMenu(e.evt.clientX, e.evt.clientY, b.id);
+                  }}
+                  onMouseEnter={(e) => {
+                    if (mode === "select")
+                      e.target.getStage().container().style.cursor = "move";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.getStage().container().style.cursor =
+                      mode === "draw" ? "crosshair" : "default";
+                  }}
+                  onDblClick={(e) => {
+                    if (mode !== "select") return;
+                    e.cancelBubble = true;
+                    setResizingId(b.id);
+                  }}
+                >
+                  {/* bbox */}
+                  {!(b.polygon && b.polygon.length > 0) && (
+                    <Rect
+                      x={0}
+                      y={0}
+                      width={b.width}
+                      height={b.height}
                       stroke={
                         outlierBboxIds?.includes(b.id) ? outlierColor : color
                       }
-                      strokeWidth={2}
-                      listening={false}
+                      strokeWidth={isSelected ? 8 : 2} // thickens line when box is highlighted
+                      fill={
+                        (outlierBboxIds?.includes(b.id)
+                          ? outlierColor
+                          : color) + (isFa ? "55" : "25") // denser fill for fa so it reads as struck out
+                      }
                     />
+                  )}
+                  {/* sam segmentation polygon */}
+                  {b.polygon && b.polygon.length > 0 && (
                     <Line
-                      points={[b.width, 0, 0, b.height]}
+                      points={b.polygon.flat()}
+                      closed
                       stroke={
                         outlierBboxIds?.includes(b.id) ? outlierColor : color
                       }
-                      strokeWidth={2}
-                      listening={false}
+                      strokeWidth={isSelected ? 8 : 2}
+                      fill={
+                        (outlierBboxIds?.includes(b.id)
+                          ? outlierColor
+                          : color) + (isFa ? "55" : "25")
+                      }
                     />
-                  </>
-                )}
-                {/* class:id tag above bbox */}
-                <Label x={0} y={-20}>
-                  <Tag fill="white" />
-                  <Text
-                    text={
-                      b.trackId !== null && b.trackId !== undefined
-                        ? `${b.className}: #${b.trackId}`
-                        : `${b.className}: ${b.id.slice(0, 6)}`
-                    }
-                    fontSize={10}
-                    fill="#000000"
-                    padding={3}
-                  />
-                </Label>
-              </Group>
-            );
-          })}
+                  )}
+                  {/* fa cross */}
+                  {isFa && (
+                    <>
+                      <Line
+                        points={[0, 0, b.width, b.height]}
+                        stroke={
+                          outlierBboxIds?.includes(b.id) ? outlierColor : color
+                        }
+                        strokeWidth={2}
+                        listening={false}
+                      />
+                      <Line
+                        points={[b.width, 0, 0, b.height]}
+                        stroke={
+                          outlierBboxIds?.includes(b.id) ? outlierColor : color
+                        }
+                        strokeWidth={2}
+                        listening={false}
+                      />
+                    </>
+                  )}
+                  {/* class:id tag above bbox */}
+                  <Label x={0} y={-20}>
+                    <Tag fill="white" />
+                    <Text
+                      text={
+                        b.trackId !== null && b.trackId !== undefined
+                          ? `${b.className}: #${b.trackId}`
+                          : `${b.className}: ${b.id.slice(0, 6)}`
+                      }
+                      fontSize={10}
+                      fill="#000000"
+                      padding={3}
+                    />
+                  </Label>
+                </Group>
+              );
+            })}
 
           <Transformer
             ref={transformerRef}

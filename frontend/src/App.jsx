@@ -46,6 +46,8 @@ function App() {
     addBbox,
     updateBboxes,
     deleteBboxes,
+    hideAllBboxes,
+    showOnlyFlagged,
   } = useStore((s) => s);
 
   // store bbox info for each frame
@@ -193,6 +195,21 @@ function App() {
         if (!useStore.getState().isMarkingFa)
           useStore.getState().markFaTrack(selectedBboxIds[0]);
       }
+      // hide every bbox
+      if (e.key === "h" || e.key === "H")
+        useStore.setState({
+          hideAllBboxes: !useStore.getState().hideAllBboxes,
+        });
+      // show only outliers and FA
+      if (e.key === "o" || e.key === "O")
+        useStore.setState({
+          showOnlyFlagged: !useStore.getState().showOnlyFlagged,
+        });
+      // tags outliers
+      if ((e.key === "g" || e.key === "G") && selectedBboxIds.length === 1) {
+        e.preventDefault();
+        useStore.getState().confirmOutlier(selectedBboxIds[0]);
+      }
       if (
         (e.key === "Delete" || e.key === "Backspace") &&
         selectedBboxIds.length > 0
@@ -288,6 +305,8 @@ function App() {
               onDimsReady={(dims) => useStore.setState({ imageDims: dims })}
               outlierBboxIds={outliers.map((o) => o.bbox_id)}
               outlierColor={OUTLIER_COLOR}
+              hideAllBboxes={hideAllBboxes}
+              showOnlyFlagged={showOnlyFlagged}
             />{" "}
             {/* calls fastAPI for image */}
             <VideoScrubber

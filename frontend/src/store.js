@@ -39,6 +39,10 @@ const useStore = create((set, get) => ({
   selectedBboxIds: [], // handles tracking of selected bboxes, to change classes/drag
   contextMenu: null, // where to render floating menu, and for which bbox
 
+  // bbox visibility toggles
+  hideAllBboxes: false, // hide all
+  showOnlyFlagged: false, // show only boxes that are marked as outlier or carry the outlier/false-alarm tag
+
   // bbox tags
   tags: DEFAULT_TAGS,
   newTagName: "", // used to add custom tags for the bboxes

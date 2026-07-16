@@ -16,6 +16,8 @@ function RightSidebar({ OUTLIER_COLOR }) {
     scanOutliers,
     computeEmbeddings,
     removeAllFa,
+    hideAllBboxes,
+    showOnlyFlagged,
   } = useStore((s) => s);
 
   const frameBboxes = bboxesByFrame[currentFrame] ?? [];
@@ -113,6 +115,39 @@ function RightSidebar({ OUTLIER_COLOR }) {
               ))}
             </ul>
           )}
+        </div>
+
+        {/* view toggles: hide-all and show-only-flagged. view only, never touch the annotations */}
+        <div
+          style={{
+            borderTop: "1px solid #ccc",
+            flexShrink: 0,
+            display: "flex",
+            gap: 4,
+          }}
+        >
+          <button
+            style={{
+              flex: 1,
+            }}
+            tabIndex={-1}
+            disabled={!videoName}
+            onClick={() => useStore.setState({ hideAllBboxes: !hideAllBboxes })}
+          >
+            {hideAllBboxes ? "Show all (H)" : "Hide all (H)"}
+          </button>
+          <button
+            style={{
+              flex: 1,
+            }}
+            tabIndex={-1}
+            disabled={!videoName}
+            onClick={() =>
+              useStore.setState({ showOnlyFlagged: !showOnlyFlagged })
+            }
+          >
+            {showOnlyFlagged ? "Only flagged ✓ (O)" : "Only flagged (O)"}
+          </button>
         </div>
 
         {/* false-alarm removal, deletes every box tagged "false-alarm" */}
