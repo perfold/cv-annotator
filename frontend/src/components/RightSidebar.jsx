@@ -209,7 +209,7 @@ function RightSidebar({ OUTLIER_COLOR }) {
                 flexShrink: 0,
               }}
             >
-              Sens: {embPctThresh.toFixed(1)}
+              Sensitivity: {embPctThresh.toFixed(1)}
             </label>
             <input
               type="range"
