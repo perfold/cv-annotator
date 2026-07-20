@@ -150,7 +150,7 @@ box across all frames in one pass (after a confirmation prompt).
 
 Run on demand via the **Scan for Outliers** button in the right sidebar (Outlier Detection panel).
 
-Flagged bboxes are highlighted in **amber (#ffcc00)** on the canvas and marked with ⚠ in the annotation list. The scrubber also shows amber tick marks at flagged frames - click any tick to jump to that frame.
+Flagged bboxes are highlighted in **magenta (#ff00ff)** on the canvas and marked with ⚠ in the annotation list. The scrubber also shows amber tick marks at flagged frames - click any tick to jump to that frame.
 
 **Detection rules:**
 

@@ -7,8 +7,7 @@ import VideoScrubber from "./components/VideoScrubber";
 import RightSidebar from "./components/RightSidebar";
 import ContextMenu from "./components/ContextMenu";
 import ProjectModal from "./components/ProjectModal";
-
-const OUTLIER_COLOR = "#ff00ff"; // magenta: deliberately far from any class colour or the #750000 accent
+import { OUTLIER_COLOR } from "./constants";
 
 function App() {
   // shortcut (ctrl z,y,c,v) states
@@ -322,7 +321,7 @@ function App() {
 
       <RightSidebar OUTLIER_COLOR={OUTLIER_COLOR} />
 
-      <ContextMenu OUTLIER_COLOR={OUTLIER_COLOR} />
+      <ContextMenu />
 
       {/* video selection for export to csv */}
       <ProjectModal

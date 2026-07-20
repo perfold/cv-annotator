@@ -1,4 +1,5 @@
 import { useRef, useState, useLayoutEffect } from "react";
+import { OUTLIER_COLOR } from "../constants";
 import useStore from "../store";
 
 function ContextMenu() {
@@ -214,7 +215,7 @@ function ContextMenu() {
               style={{
                 padding: "6px 12px",
                 cursor: isMarkingFa ? "default" : "pointer",
-                color: isMarkingFa ? "#666" : "#e67e22",
+                color: isMarkingFa ? "#666" : OUTLIER_COLOR,
               }}
               onMouseEnter={(e) => (e.currentTarget.style.background = "#333")}
               onMouseLeave={(e) =>
@@ -263,7 +264,7 @@ function ContextMenu() {
               style={{
                 padding: "6px 12px",
                 cursor: "pointer",
-                color: "#ff00ff",
+                color: OUTLIER_COLOR,
               }}
               onMouseEnter={(e) => (e.currentTarget.style.background = "#333")}
               onMouseLeave={(e) =>

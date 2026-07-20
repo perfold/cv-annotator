@@ -12,6 +12,7 @@ import {
 } from "react-konva";
 import useImage from "use-image";
 import { useState, useRef, useEffect } from "react";
+import { OUTLIER_COLOR, FA_COLOR } from "../constants";
 
 function AnnotationCanvas({
   frameUrl,
@@ -26,7 +27,7 @@ function AnnotationCanvas({
   updateBboxes,
   onDimsReady,
   outlierBboxIds,
-  outlierColor = "#ff00ff",
+  outlierColor = OUTLIER_COLOR,
   hideAllBboxes = false,
   showOnlyFlagged = false,
 }) {
@@ -354,18 +355,20 @@ function AnnotationCanvas({
             .filter((b) => {
               if (hideAllBboxes) return false;
               if (!showOnlyFlagged) return true;
-              // filter on: keep only boxes that are a live outlier or carry the outlier/fa tag
+              // filter on: keep only boxes that are a live outlier, carry the outlier tag, or have the false-alarm class
               const t = b.tags ?? [];
               return (
                 outlierBboxIds?.includes(b.id) ||
                 t.includes("outlier") ||
-                t.includes("false-alarm")
+                b.className === "false-alarm"
               );
             })
             .map((b) => {
-              const color = classColors[b.className] ?? "#ffffff";
+              const isFa = b.className === "false-alarm";
+              const color = isFa
+                ? FA_COLOR
+                : (classColors[b.className] ?? "#ffffff");
               const isSelected = selectedBboxIds.includes(b.id);
-              const isFa = (b.tags ?? []).includes("false-alarm"); // if false-alarm, draw a cross + more opague
               return (
                 <Group
                   key={b.id}

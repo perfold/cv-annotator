@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import axios from "axios";
-import { PALETTE, DEFAULT_TAGS, QUALITY_PRESETS } from "./constants";
+import { PALETTE, DEFAULT_TAGS, QUALITY_PRESETS, FA_COLOR } from "./constants";
 
 const useStore = create((set, get) => ({
   // video states
@@ -623,7 +623,6 @@ const useStore = create((set, get) => ({
       currentFrame,
       bboxesByFrame,
       imageDims,
-      tags,
       faMatchClass,
       pushHistory,
     } = get();
@@ -690,23 +689,21 @@ const useStore = create((set, get) => ({
 
       const matchedIds = data.matched_ids ?? [];
 
-      // make sure the "false-alarm" tag exists, in case it was deleted
-      const FA_TAG = "false-alarm";
-      const nextTags = tags.includes(FA_TAG) ? tags : [...tags, FA_TAG];
+      const FA_CLASS = "false-alarm";
 
       pushHistory();
-      // tag the seed box + every matched existing box as fa (across all frames)
-      const toTag = new Set([src.id, ...matchedIds]);
+      // reclass the seed box + every matched existing box to false-alarm (across all frames)
+      const toMark = new Set([src.id, ...matchedIds]);
       const next = {};
       for (const [frameIdxStr, boxes] of Object.entries(bboxesByFrame)) {
         next[frameIdxStr] = boxes.map((b) => {
-          if (!toTag.has(b.id)) return b;
-          const has = (b.tags ?? []).includes(FA_TAG);
-          return has ? b : { ...b, tags: [...(b.tags ?? []), FA_TAG] };
+          if (!toMark.has(b.id)) return b;
+          if (b.className === FA_CLASS) return b; // already fa, leave as-is
+          return { ...b, className: FA_CLASS };
         });
       }
 
-      set({ bboxesByFrame: next, tags: nextTags });
+      set({ bboxesByFrame: next });
       alert(
         `Marked ${matchedIds.length} box${matchedIds.length === 1 ? "" : "es"} as FA (stopped: ${data.stop_reason}).`,
       );
@@ -718,23 +715,23 @@ const useStore = create((set, get) => ({
     }
   },
 
-  // delete every box tagged "false-alarm" across all frames
+  // delete every box whose class is "false-alarm" across all frames
   removeAllFa: () => {
     const { bboxesByFrame, pushHistory } = get();
-    const FA_TAG = "false-alarm";
+    const FA_CLASS = "false-alarm";
 
-    // skip the case where no boxes are tagged FA
+    // skip the case where no boxes are class false-alarm
     let count = 0;
     for (const boxes of Object.values(bboxesByFrame)) {
-      count += boxes.filter((b) => (b.tags ?? []).includes(FA_TAG)).length;
+      count += boxes.filter((b) => b.className === FA_CLASS).length;
     }
     if (count === 0) {
-      alert("No boxes are tagged FA.");
+      alert("No boxes are marked FA.");
       return;
     }
     if (
       !window.confirm(
-        `Delete ${count} box${count === 1 ? "" : "es"} tagged FA?`,
+        `Delete ${count} box${count === 1 ? "" : "es"} marked FA?`,
       )
     )
       return;
@@ -742,7 +739,7 @@ const useStore = create((set, get) => ({
     pushHistory();
     const next = {};
     for (const [frameIdxStr, boxes] of Object.entries(bboxesByFrame)) {
-      next[frameIdxStr] = boxes.filter((b) => !(b.tags ?? []).includes(FA_TAG));
+      next[frameIdxStr] = boxes.filter((b) => b.className !== FA_CLASS);
     }
     set({ bboxesByFrame: next });
   },

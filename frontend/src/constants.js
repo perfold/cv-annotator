@@ -17,15 +17,11 @@ const PALETTE = [
   "#009688",
   "#cddc39",
 ];
-const DEFAULT_TAGS = [
-  "occluded",
-  "blur",
-  "cut-off",
-  "image-error",
-  "false-alarm",
-  "outlier",
-]; // default tags
+const DEFAULT_TAGS = ["occluded", "blur", "cut-off", "image-error", "outlier"]; // default tags
 
 const QUALITY_PRESETS = { low: 31, medium: 15, high: 1 }; // extracted frames' jpg quality
 
-export { PALETTE, DEFAULT_TAGS, QUALITY_PRESETS };
+const FA_COLOR = "#750000";
+const OUTLIER_COLOR = "#ff00ff";
+
+export { PALETTE, DEFAULT_TAGS, QUALITY_PRESETS, FA_COLOR, OUTLIER_COLOR };
