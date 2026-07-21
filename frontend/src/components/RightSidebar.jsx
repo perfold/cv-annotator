@@ -13,6 +13,7 @@ function RightSidebar({ OUTLIER_COLOR }) {
     videoName,
     openContextMenu,
     deleteBbox,
+    toggleBboxTag,
     scanOutliers,
     confirmAllOutliers,
     computeEmbeddings,
@@ -92,6 +93,11 @@ function RightSidebar({ OUTLIER_COLOR }) {
                   {(b.tags ?? []).map((tag) => (
                     <span
                       key={tag}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleBboxTag(b.id, tag);
+                      }}
+                      title={`remove ${tag}`}
                       style={{
                         background: "#750000",
                         color: "#FFFFFF",
@@ -99,11 +105,12 @@ function RightSidebar({ OUTLIER_COLOR }) {
                         padding: "1px 5px",
                         fontSize: 10,
                         marginLeft: 3,
+                        cursor: "pointer",
                       }}
                     >
                       {tag}
                     </span>
-                  ))}
+                  ))}{" "}
                   <button
                     onClick={(e) => {
                       e.stopPropagation(); // don't let the row's onClick re-select a box we're deleting
