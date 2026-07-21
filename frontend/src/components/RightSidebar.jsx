@@ -73,11 +73,11 @@ function RightSidebar({ OUTLIER_COLOR }) {
                   }}
                 >
                   {i + 1}. {b.className}{" "}
-                  <span style={{ color: "#888", fontSize: 11 }}>
-                    {b.trackId !== null && b.trackId !== undefined
-                      ? `#${b.trackId}`
-                      : `#${b.id.slice(0, 6)}`}
-                  </span>
+                  {b.trackId !== null && b.trackId !== undefined && (
+                    <span style={{ color: "#888", fontSize: 11 }}>
+                      {`#${b.trackId}`}
+                    </span>
+                  )}
                   {outliers.some((o) => o.bbox_id === b.id) && (
                     <span
                       style={{

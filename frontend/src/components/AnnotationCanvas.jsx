@@ -533,7 +533,7 @@ function AnnotationCanvas({
                       text={
                         b.trackId !== null && b.trackId !== undefined
                           ? `${b.className}: #${b.trackId}`
-                          : `${b.className}: ${b.id.slice(0, 6)}`
+                          : b.className
                       }
                       fontSize={10}
                       fill="#000000"
