@@ -1,10 +1,16 @@
 import { useEffect, useRef } from "react";
 import useStore from "./store";
 import AnnotationCanvas from "./components/AnnotationCanvas";
-import LeftSidebar from "./components/LeftSidebar";
-import Toolbar from "./components/Toolbar";
+import HeaderBar from "./components/HeaderBar";
+import Panel from "./components/Panel";
+import AnnotationsPanel from "./components/panels/AnnotationsPanel";
+import ClassesPanel from "./components/panels/ClassesPanel";
+import OutliersPanel from "./components/panels/OutliersPanel";
+import TagsPanel from "./components/panels/TagsPanel";
+import ImportPopover from "./components/popovers/ImportPopover";
+import ExportPopover from "./components/popovers/ExportPopover";
+import ModelsPopover from "./components/popovers/ModelsPopover";
 import VideoScrubber from "./components/VideoScrubber";
-import RightSidebar from "./components/RightSidebar";
 import ContextMenu from "./components/ContextMenu";
 import ProjectModal from "./components/ProjectModal";
 import { OUTLIER_COLOR } from "./constants";
@@ -47,6 +53,11 @@ function App() {
     deleteBboxes,
     hideAllBboxes,
     showOnlyFlagged,
+    ui,
+    uploadVideo,
+    importXML,
+    showSaved,
+    isExtracting,
   } = useStore((s) => s);
 
   // store bbox info for each frame
@@ -265,61 +276,184 @@ function App() {
   }, [isPlaying, frameCount]);
 
   // UI block
+
+  const leftOpen = ui.panels.annotations.open || ui.panels.classes.open;
+  const rightOpen = ui.panels.outliers.open || ui.panels.tags.open;
+
   return (
-    <div style={{ display: "flex", height: "100vh", textAlign: "center" }}>
-      <LeftSidebar />
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100vh",
+        textAlign: "center",
+      }}
+    >
+      <HeaderBar />
 
-      {/* center area */}
-
-      <div
-        style={{
-          flex: 1,
-          padding: "2px 8px",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "stretch",
-          textAlign: "center",
+      {/* file inputs */}
+      <input
+        type="file"
+        accept="video/*"
+        id="video-input"
+        style={{ display: "none" }}
+        onChange={(e) => uploadVideo(e.target.files[0])}
+      />
+      <input
+        type="file"
+        accept=".xml"
+        id="import-xml-input"
+        style={{ display: "none" }}
+        onChange={(e) => {
+          if (e.target.files[0]) importXML(e.target.files[0]);
         }}
-      >
-        <Toolbar saveSession={saveSession} lastSavedRef={lastSavedRef} />
+      />
 
-        {/* konva stage: image display */}
-        {videoName && (
-          <div style={{ width: "100%" }}>
-            <p>
-              Loaded: {videoName} ({frameCount} frames)
-            </p>{" "}
-            {/* shows total frame ct */}
-            <AnnotationCanvas
-              frameUrl={`http://localhost:8000/frame/${videoName}/${currentFrame}?q=${quality}`}
-              activeClass={activeClass}
-              classColors={classColors}
-              frameBboxes={frameBboxes}
-              addBbox={addBbox}
-              selectedBboxIds={selectedBboxIds}
-              setSelectedBboxIds={(ids) =>
-                useStore.setState({ selectedBboxIds: ids })
-              }
-              openContextMenu={openContextMenu}
-              mode={mode}
-              updateBboxes={updateBboxes}
-              onDimsReady={(dims) => useStore.setState({ imageDims: dims })}
-              outlierBboxIds={outliers.map((o) => o.bbox_id)}
-              outlierColor={OUTLIER_COLOR}
-              hideAllBboxes={hideAllBboxes}
-              showOnlyFlagged={showOnlyFlagged}
-            />{" "}
-            {/* calls fastAPI for image */}
-            <VideoScrubber
-              formatTime={formatTime}
-              prevFrame={prevFrame}
-              nextFrame={nextFrame}
-            />
+      <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
+        {/* left column: annotations on top, classes below when open */}
+        {leftOpen && (
+          <div
+            style={{
+              width: ui.panels.annotations.size,
+              flexShrink: 0,
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
+              padding: 4,
+              minHeight: 0,
+            }}
+          >
+            {ui.panels.annotations.open && (
+              <Panel name="annotations" title="Annotations">
+                <AnnotationsPanel />
+              </Panel>
+            )}
+            {ui.panels.classes.open && (
+              <Panel name="classes" title="Classes">
+                <ClassesPanel />
+              </Panel>
+            )}
+          </div>
+        )}
+
+        {/* center area */}
+        <div
+          style={{
+            flex: 1,
+            minWidth: 0,
+            padding: "2px 8px",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "stretch",
+            textAlign: "center",
+          }}
+        >
+          {/* konva stage: image display */}
+          {videoName && (
+            <div
+              style={{
+                width: "100%",
+                flex: 1,
+                minHeight: 0,
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 12,
+                  flexShrink: 0,
+                }}
+              >
+                <p style={{ margin: "2px 0" }}>
+                  Loaded: {videoName} ({frameCount} frames)
+                </p>{" "}
+                {/* shows total frame ct */}
+                <span
+                  style={{
+                    fontSize: 12,
+                    color: "#009000",
+                    opacity: showSaved ? 1 : 0,
+                    transition: "opacity 0.5s ease",
+                    pointerEvents: "none",
+                  }}
+                >
+                  ✓ Saved
+                </span>
+                {isExtracting && (
+                  <span style={{ color: "#750000", fontSize: 14 }}>
+                    Re-extracting frames, please wait...
+                  </span>
+                )}
+              </div>
+              {/* annotation canvas */}
+              <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
+                <AnnotationCanvas
+                  frameUrl={`http://localhost:8000/frame/${videoName}/${currentFrame}?q=${quality}`}
+                  activeClass={activeClass}
+                  classColors={classColors}
+                  frameBboxes={frameBboxes}
+                  addBbox={addBbox}
+                  selectedBboxIds={selectedBboxIds}
+                  setSelectedBboxIds={(ids) =>
+                    useStore.setState({ selectedBboxIds: ids })
+                  }
+                  openContextMenu={openContextMenu}
+                  mode={mode}
+                  updateBboxes={updateBboxes}
+                  onDimsReady={(dims) => useStore.setState({ imageDims: dims })}
+                  outlierBboxIds={outliers.map((o) => o.bbox_id)}
+                  outlierColor={OUTLIER_COLOR}
+                  hideAllBboxes={hideAllBboxes}
+                  showOnlyFlagged={showOnlyFlagged}
+                />{" "}
+                {/* calls fastAPI for image */}
+              </div>
+              <div style={{ flexShrink: 0 }}>
+                <VideoScrubber
+                  formatTime={formatTime}
+                  prevFrame={prevFrame}
+                  nextFrame={nextFrame}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* right column: outliers on top, tags below when open */}
+        {rightOpen && (
+          <div
+            style={{
+              width: ui.panels.outliers.size,
+              flexShrink: 0,
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
+              padding: 4,
+              minHeight: 0,
+            }}
+          >
+            {ui.panels.outliers.open && (
+              <Panel name="outliers" title="Outlier Detection">
+                <OutliersPanel />
+              </Panel>
+            )}
+            {ui.panels.tags.open && (
+              <Panel name="tags" title="Tags">
+                <TagsPanel />
+              </Panel>
+            )}
           </div>
         )}
       </div>
 
-      <RightSidebar OUTLIER_COLOR={OUTLIER_COLOR} />
+      {/* popovers */}
+      <ImportPopover />
+      <ExportPopover saveSession={saveSession} lastSavedRef={lastSavedRef} />
+      <ModelsPopover />
 
       <ContextMenu />
 

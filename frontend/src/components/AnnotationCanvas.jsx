@@ -34,6 +34,7 @@ function AnnotationCanvas({
   // refs and states
   const containerRef = useRef();
   const [containerWidth, setContainerWidth] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(0);
   const nodeRefs = useRef({});
   const dragStartPositions = useRef({}); // positions at drag start
   const rubberBandStartRef = useRef(null); // where rubber band started
@@ -50,10 +51,13 @@ function AnnotationCanvas({
 
   useEffect(() => {
     if (!containerRef.current) return;
-    setContainerWidth(containerRef.current.getBoundingClientRect().width);
+    const rect = containerRef.current.getBoundingClientRect();
+    setContainerWidth(rect.width);
+    setContainerHeight(rect.height);
 
     const observer = new ResizeObserver((entries) => {
       setContainerWidth(entries[0].contentRect.width);
+      setContainerHeight(entries[0].contentRect.height);
     });
     observer.observe(containerRef.current);
     return () => observer.disconnect();
@@ -79,7 +83,7 @@ function AnnotationCanvas({
   const displayImage = lastImageRef.current;
 
   // scale stage to fit image naturally
-  const MAX_STAGE_HEIGHT = window.innerHeight - 205; // keep space for buttons above/below stage
+  const MAX_STAGE_HEIGHT = Math.max(200, containerHeight);
   let stageWidth = containerWidth;
   let scale =
     displayImage && stageWidth ? stageWidth / displayImage.naturalWidth : 1;
@@ -318,293 +322,299 @@ function AnnotationCanvas({
             Select a class to start annotating.
           </p>
         )}
-      <Stage
-        ref={stageRef}
-        width={stageWidth}
-        height={stageHeight}
-        scaleX={stageScale}
-        scaleY={stageScale}
-        x={stagePos.x}
-        y={stagePos.y}
-        style={{
-          cursor:
-            mode === "draw"
-              ? isDrawing
-                ? "crosshair"
-                : "crosshair"
-              : "default",
-          display: "block",
-        }}
-        onClick={handleClick}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onDblClick={handleDblClick}
-        onWheel={handleWheel}
-      >
-        <Layer>
-          {displayImage && (
-            <KonvaImage
-              image={displayImage}
-              width={stageWidth}
-              height={stageHeight}
-            />
-          )}
+      <div style={{ width: stageWidth, height: stageHeight, flexShrink: 0 }}>
+        <Stage
+          ref={stageRef}
+          width={stageWidth}
+          height={stageHeight}
+          scaleX={stageScale}
+          scaleY={stageScale}
+          x={stagePos.x}
+          y={stagePos.y}
+          style={{
+            cursor:
+              mode === "draw"
+                ? isDrawing
+                  ? "crosshair"
+                  : "crosshair"
+                : "default",
+            display: "block",
+          }}
+          onClick={handleClick}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onDblClick={handleDblClick}
+          onWheel={handleWheel}
+        >
+          <Layer>
+            {displayImage && (
+              <KonvaImage
+                image={displayImage}
+                width={stageWidth}
+                height={stageHeight}
+              />
+            )}
 
-          {frameBboxes
-            .filter((b) => {
-              if (hideAllBboxes) return false;
-              if (!showOnlyFlagged) return true;
-              // filter on: keep only boxes that are a live outlier, carry the outlier tag, or have the false-alarm class
-              const t = b.tags ?? [];
-              return (
-                outlierBboxIds?.includes(b.id) ||
-                t.includes("outlier") ||
-                b.className === "false-alarm"
-              );
-            })
-            .map((b) => {
-              const isFa = b.className === "false-alarm";
-              const color = isFa
-                ? FA_COLOR
-                : (classColors[b.className] ?? "#ffffff");
-              const isSelected = selectedBboxIds.includes(b.id);
-              return (
-                <Group
-                  key={b.id}
-                  x={b.x}
-                  y={b.y}
-                  ref={(el) => {
-                    if (el) nodeRefs.current[b.id] = el;
-                    else delete nodeRefs.current[b.id];
-                  }}
-                  // bbox dragging functions
-                  draggable={mode === "select" && resizingId !== b.id}
-                  listening={mode === "select"}
-                  onMouseDown={(e) => {
-                    if (e.evt.ctrlKey) return;
-                    e.cancelBubble = true;
-                  }}
-                  onDragStart={(e) => {
-                    if (e.evt.ctrlKey) {
-                      e.target.stopDrag();
-                      return;
-                    } // prevent dragging of bbox when panning/dragging image
-                    e.cancelBubble = true;
-                    // if dragging an unselected box, select only it
-                    const currentSelection = selectedBboxIds.includes(b.id)
-                      ? selectedBboxIds
-                      : [b.id];
-                    if (!selectedBboxIds.includes(b.id))
-                      setSelectedBboxIds([b.id]);
-                    // record start positions for all selected boxes
-                    dragStartPositions.current = {};
-                    currentSelection.forEach((id) => {
-                      const node = nodeRefs.current[id];
-                      if (node)
-                        dragStartPositions.current[id] = {
-                          x: node.x(),
-                          y: node.y(),
-                        };
-                    });
-                  }}
-                  onDragMove={(e) => {
-                    e.cancelBubble = true;
-                    const start = dragStartPositions.current[b.id];
-                    if (!start) return;
-                    const dx = e.target.x() - start.x;
-                    const dy = e.target.y() - start.y;
-                    // move all other selected boxes together
-                    selectedBboxIds.forEach((id) => {
-                      if (id === b.id) return;
-                      const node = nodeRefs.current[id];
-                      const s = dragStartPositions.current[id];
-                      if (node && s) {
-                        node.x(s.x + dx);
-                        node.y(s.y + dy);
-                      }
-                    });
-                  }}
-                  onDragEnd={(e) => {
-                    e.cancelBubble = true;
-                    // batch update all selected boxes with their final positions
-                    const updates = selectedBboxIds
-                      .map((id) => {
+            {frameBboxes
+              .filter((b) => {
+                if (hideAllBboxes) return false;
+                if (!showOnlyFlagged) return true;
+                // filter on: keep only boxes that are a live outlier, carry the outlier tag, or have the false-alarm class
+                const t = b.tags ?? [];
+                return (
+                  outlierBboxIds?.includes(b.id) ||
+                  t.includes("outlier") ||
+                  b.className === "false-alarm"
+                );
+              })
+              .map((b) => {
+                const isFa = b.className === "false-alarm";
+                const color = isFa
+                  ? FA_COLOR
+                  : (classColors[b.className] ?? "#ffffff");
+                const isSelected = selectedBboxIds.includes(b.id);
+                return (
+                  <Group
+                    key={b.id}
+                    x={b.x}
+                    y={b.y}
+                    ref={(el) => {
+                      if (el) nodeRefs.current[b.id] = el;
+                      else delete nodeRefs.current[b.id];
+                    }}
+                    // bbox dragging functions
+                    draggable={mode === "select" && resizingId !== b.id}
+                    listening={mode === "select"}
+                    onMouseDown={(e) => {
+                      if (e.evt.ctrlKey) return;
+                      e.cancelBubble = true;
+                    }}
+                    onDragStart={(e) => {
+                      if (e.evt.ctrlKey) {
+                        e.target.stopDrag();
+                        return;
+                      } // prevent dragging of bbox when panning/dragging image
+                      e.cancelBubble = true;
+                      // if dragging an unselected box, select only it
+                      const currentSelection = selectedBboxIds.includes(b.id)
+                        ? selectedBboxIds
+                        : [b.id];
+                      if (!selectedBboxIds.includes(b.id))
+                        setSelectedBboxIds([b.id]);
+                      // record start positions for all selected boxes
+                      dragStartPositions.current = {};
+                      currentSelection.forEach((id) => {
                         const node = nodeRefs.current[id];
-                        return node ? { id, x: node.x(), y: node.y() } : null;
-                      })
-                      .filter(Boolean);
-                    updateBboxes(updates);
-                    dragStartPositions.current = {};
-                  }}
-                  onClick={(e) => {
-                    if (mode !== "select") return;
-                    e.cancelBubble = true;
-                    if (e.evt.shiftKey) {
-                      setSelectedBboxIds(
-                        selectedBboxIds.includes(b.id)
-                          ? selectedBboxIds.filter((id) => id !== b.id)
-                          : [...selectedBboxIds, b.id],
-                      );
-                    } else {
-                      // left click, no shift: select only this box
+                        if (node)
+                          dragStartPositions.current[id] = {
+                            x: node.x(),
+                            y: node.y(),
+                          };
+                      });
+                    }}
+                    onDragMove={(e) => {
+                      e.cancelBubble = true;
+                      const start = dragStartPositions.current[b.id];
+                      if (!start) return;
+                      const dx = e.target.x() - start.x;
+                      const dy = e.target.y() - start.y;
+                      // move all other selected boxes together
+                      selectedBboxIds.forEach((id) => {
+                        if (id === b.id) return;
+                        const node = nodeRefs.current[id];
+                        const s = dragStartPositions.current[id];
+                        if (node && s) {
+                          node.x(s.x + dx);
+                          node.y(s.y + dy);
+                        }
+                      });
+                    }}
+                    onDragEnd={(e) => {
+                      e.cancelBubble = true;
+                      // batch update all selected boxes with their final positions
+                      const updates = selectedBboxIds
+                        .map((id) => {
+                          const node = nodeRefs.current[id];
+                          return node ? { id, x: node.x(), y: node.y() } : null;
+                        })
+                        .filter(Boolean);
+                      updateBboxes(updates);
+                      dragStartPositions.current = {};
+                    }}
+                    onClick={(e) => {
+                      if (mode !== "select") return;
+                      e.cancelBubble = true;
+                      if (e.evt.shiftKey) {
+                        setSelectedBboxIds(
+                          selectedBboxIds.includes(b.id)
+                            ? selectedBboxIds.filter((id) => id !== b.id)
+                            : [...selectedBboxIds, b.id],
+                        );
+                      } else {
+                        // left click, no shift: select only this box
+                        setSelectedBboxIds([b.id]);
+                      }
+                    }}
+                    onContextMenu={(e) => {
+                      e.evt.preventDefault();
+                      e.cancelBubble = true;
                       setSelectedBboxIds([b.id]);
-                    }
-                  }}
-                  onContextMenu={(e) => {
-                    e.evt.preventDefault();
-                    e.cancelBubble = true;
-                    setSelectedBboxIds([b.id]);
-                    openContextMenu(e.evt.clientX, e.evt.clientY, b.id);
-                  }}
-                  onMouseEnter={(e) => {
-                    if (mode === "select")
-                      e.target.getStage().container().style.cursor = "move";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.target.getStage().container().style.cursor =
-                      mode === "draw" ? "crosshair" : "default";
-                  }}
-                  onDblClick={(e) => {
-                    if (mode !== "select") return;
-                    e.cancelBubble = true;
-                    setResizingId(b.id);
-                  }}
-                >
-                  {/* bbox */}
-                  {!(b.polygon && b.polygon.length > 0) && (
-                    <Rect
-                      x={0}
-                      y={0}
-                      width={b.width}
-                      height={b.height}
-                      stroke={
-                        outlierBboxIds?.includes(b.id) ? outlierColor : color
-                      }
-                      strokeWidth={isSelected ? 8 : 2} // thickens line when box is highlighted
-                      fill={
-                        (outlierBboxIds?.includes(b.id)
-                          ? outlierColor
-                          : color) + (isFa ? "55" : "25") // denser fill for fa so it reads as struck out
-                      }
-                    />
-                  )}
-                  {/* sam segmentation polygon */}
-                  {b.polygon && b.polygon.length > 0 && (
-                    <Line
-                      points={b.polygon.flat()}
-                      closed
-                      stroke={
-                        outlierBboxIds?.includes(b.id) ? outlierColor : color
-                      }
-                      strokeWidth={isSelected ? 8 : 2}
-                      fill={
-                        (outlierBboxIds?.includes(b.id)
-                          ? outlierColor
-                          : color) + (isFa ? "55" : "25")
-                      }
-                    />
-                  )}
-                  {/* fa cross */}
-                  {isFa && (
-                    <>
-                      <Line
-                        points={[0, 0, b.width, b.height]}
+                      openContextMenu(e.evt.clientX, e.evt.clientY, b.id);
+                    }}
+                    onMouseEnter={(e) => {
+                      if (mode === "select")
+                        e.target.getStage().container().style.cursor = "move";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.getStage().container().style.cursor =
+                        mode === "draw" ? "crosshair" : "default";
+                    }}
+                    onDblClick={(e) => {
+                      if (mode !== "select") return;
+                      e.cancelBubble = true;
+                      setResizingId(b.id);
+                    }}
+                  >
+                    {/* bbox */}
+                    {!(b.polygon && b.polygon.length > 0) && (
+                      <Rect
+                        x={0}
+                        y={0}
+                        width={b.width}
+                        height={b.height}
                         stroke={
                           outlierBboxIds?.includes(b.id) ? outlierColor : color
                         }
-                        strokeWidth={2}
-                        listening={false}
+                        strokeWidth={isSelected ? 8 : 2} // thickens line when box is highlighted
+                        fill={
+                          (outlierBboxIds?.includes(b.id)
+                            ? outlierColor
+                            : color) + (isFa ? "55" : "25") // denser fill for fa so it reads as struck out
+                        }
                       />
+                    )}
+                    {/* sam segmentation polygon */}
+                    {b.polygon && b.polygon.length > 0 && (
                       <Line
-                        points={[b.width, 0, 0, b.height]}
+                        points={b.polygon.flat()}
+                        closed
                         stroke={
                           outlierBboxIds?.includes(b.id) ? outlierColor : color
                         }
-                        strokeWidth={2}
-                        listening={false}
+                        strokeWidth={isSelected ? 8 : 2}
+                        fill={
+                          (outlierBboxIds?.includes(b.id)
+                            ? outlierColor
+                            : color) + (isFa ? "55" : "25")
+                        }
                       />
-                    </>
-                  )}
-                  {/* class:id tag above bbox */}
-                  <Label x={0} y={-20}>
-                    <Tag fill="white" />
-                    <Text
-                      text={
-                        b.trackId !== null && b.trackId !== undefined
-                          ? `${b.className}: #${b.trackId}`
-                          : b.className
-                      }
-                      fontSize={10}
-                      fill="#000000"
-                      padding={3}
-                    />
-                  </Label>
-                </Group>
-              );
-            })}
+                    )}
+                    {/* fa cross */}
+                    {isFa && (
+                      <>
+                        <Line
+                          points={[0, 0, b.width, b.height]}
+                          stroke={
+                            outlierBboxIds?.includes(b.id)
+                              ? outlierColor
+                              : color
+                          }
+                          strokeWidth={2}
+                          listening={false}
+                        />
+                        <Line
+                          points={[b.width, 0, 0, b.height]}
+                          stroke={
+                            outlierBboxIds?.includes(b.id)
+                              ? outlierColor
+                              : color
+                          }
+                          strokeWidth={2}
+                          listening={false}
+                        />
+                      </>
+                    )}
+                    {/* class:id tag above bbox */}
+                    <Label x={0} y={-20}>
+                      <Tag fill="white" />
+                      <Text
+                        text={
+                          b.trackId !== null && b.trackId !== undefined
+                            ? `${b.className}: #${b.trackId}`
+                            : b.className
+                        }
+                        fontSize={10}
+                        fill="#000000"
+                        padding={3}
+                      />
+                    </Label>
+                  </Group>
+                );
+              })}
 
-          <Transformer
-            ref={transformerRef}
-            rotateEnabled={false}
-            keepRatio={false}
-            onTransformEnd={() => {
-              if (!resizingId) return;
-              const node = nodeRefs.current[resizingId];
-              if (!node) return;
-              const bbox = frameBboxes.find((b) => b.id === resizingId);
-              if (!bbox) return;
+            <Transformer
+              ref={transformerRef}
+              rotateEnabled={false}
+              keepRatio={false}
+              onTransformEnd={() => {
+                if (!resizingId) return;
+                const node = nodeRefs.current[resizingId];
+                if (!node) return;
+                const bbox = frameBboxes.find((b) => b.id === resizingId);
+                if (!bbox) return;
 
-              const scaleX = node.scaleX();
-              const scaleY = node.scaleY();
-              node.scaleX(1); // reset scale, apply to width/height instead
-              node.scaleY(1);
+                const scaleX = node.scaleX();
+                const scaleY = node.scaleY();
+                node.scaleX(1); // reset scale, apply to width/height instead
+                node.scaleY(1);
 
-              updateBboxes([
-                {
-                  id: resizingId,
-                  x: node.x(),
-                  y: node.y(),
-                  width: Math.max(5, bbox.width * scaleX),
-                  height: Math.max(5, bbox.height * scaleY),
-                },
-              ]);
-            }}
-            boundBoxFunc={(oldBox, newBox) => {
-              if (newBox.width < 5 || newBox.height < 5) return oldBox; // prevent resize too small
-              return newBox;
-            }}
-          />
-
-          {/* preview rect */}
-          {preview && (
-            <Rect
-              x={preview.x}
-              y={preview.y}
-              width={preview.width}
-              height={preview.height}
-              stroke="#ffffff"
-              strokeWidth={1}
-              dash={[6, 3]}
-              fill="rgba(255,255,255,0.08)"
-              listening={false}
+                updateBboxes([
+                  {
+                    id: resizingId,
+                    x: node.x(),
+                    y: node.y(),
+                    width: Math.max(5, bbox.width * scaleX),
+                    height: Math.max(5, bbox.height * scaleY),
+                  },
+                ]);
+              }}
+              boundBoxFunc={(oldBox, newBox) => {
+                if (newBox.width < 5 || newBox.height < 5) return oldBox; // prevent resize too small
+                return newBox;
+              }}
             />
-          )}
-          {rubberBand && (
-            <Rect
-              x={Math.min(rubberBand.x1, rubberBand.x2)}
-              y={Math.min(rubberBand.y1, rubberBand.y2)}
-              width={Math.abs(rubberBand.x2 - rubberBand.x1)}
-              height={Math.abs(rubberBand.y2 - rubberBand.y1)}
-              stroke="#4af"
-              strokeWidth={1}
-              dash={[4, 4]}
-              fill="rgba(64,170,255,0.08)"
-              listening={false}
-            />
-          )}
-        </Layer>
-      </Stage>
+
+            {/* preview rect */}
+            {preview && (
+              <Rect
+                x={preview.x}
+                y={preview.y}
+                width={preview.width}
+                height={preview.height}
+                stroke="#ffffff"
+                strokeWidth={1}
+                dash={[6, 3]}
+                fill="rgba(255,255,255,0.08)"
+                listening={false}
+              />
+            )}
+            {rubberBand && (
+              <Rect
+                x={Math.min(rubberBand.x1, rubberBand.x2)}
+                y={Math.min(rubberBand.y1, rubberBand.y2)}
+                width={Math.abs(rubberBand.x2 - rubberBand.x1)}
+                height={Math.abs(rubberBand.y2 - rubberBand.y1)}
+                stroke="#4af"
+                strokeWidth={1}
+                dash={[4, 4]}
+                fill="rgba(64,170,255,0.08)"
+                listening={false}
+              />
+            )}
+          </Layer>
+        </Stage>
+      </div>
     </div>
   );
 }

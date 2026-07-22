@@ -69,6 +69,73 @@ const useStore = create((set, get) => ({
   // embedding states (shared by outlier detection rule 3 and bytetrack re-id)
   embeddingStatus: "idle", // idle/computing/ready, for sidebar indicator
 
+  // ui layout states
+  ui: {
+    panels: {
+      annotations: {
+        open: true,
+        mode: "docked",
+        edge: "left",
+        size: 300,
+        x: 80,
+        y: 120,
+        w: 300,
+        h: 420,
+      },
+      classes: {
+        open: false,
+        mode: "docked",
+        edge: "left",
+        size: 300,
+        x: 120,
+        y: 200,
+        w: 300,
+        h: 380,
+      },
+      outliers: {
+        open: true,
+        mode: "docked",
+        edge: "right",
+        size: 300,
+        x: 400,
+        y: 120,
+        w: 300,
+        h: 420,
+      },
+      tags: {
+        open: false,
+        mode: "docked",
+        edge: "right",
+        size: 300,
+        x: 440,
+        y: 200,
+        w: 300,
+        h: 380,
+      },
+    },
+    openPopover: null,
+  },
+
+  // toggle a panel open/shut
+  togglePanel: (name) => {
+    set((s) => ({
+      ui: {
+        ...s.ui,
+        panels: {
+          ...s.ui.panels,
+          [name]: { ...s.ui.panels[name], open: !s.ui.panels[name].open },
+        },
+      },
+    }));
+  },
+
+  // open a popover by name
+  setPopover: (name) => {
+    set((s) => ({
+      ui: { ...s.ui, openPopover: s.ui.openPopover === name ? null : name },
+    }));
+  },
+
   // save and load annotations from data folder
   saveSession: async () => {
     const { videoName, bboxesByFrame, classes, classColors, imageDims } = get();
