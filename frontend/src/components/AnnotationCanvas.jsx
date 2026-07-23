@@ -131,10 +131,11 @@ function AnnotationCanvas({
     if (!stage) return null;
     const pos = stage.getPointerPosition();
     if (!pos) return null;
-    const scale = stage.scaleX();
+    const zoom = stage.scaleX();
+    // boxes are stored in image space
     return {
-      x: (pos.x - stagePos.x) / scale,
-      y: (pos.y - stagePos.y) / scale,
+      x: (pos.x - stagePos.x) / zoom / scale,
+      y: (pos.y - stagePos.y) / zoom / scale,
     };
   };
 
@@ -377,8 +378,10 @@ function AnnotationCanvas({
                 return (
                   <Group
                     key={b.id}
-                    x={b.x}
-                    y={b.y}
+                    x={b.x * scale}
+                    y={b.y * scale}
+                    scaleX={scale}
+                    scaleY={scale}
                     ref={(el) => {
                       if (el) nodeRefs.current[b.id] = el;
                       else delete nodeRefs.current[b.id];
@@ -436,7 +439,10 @@ function AnnotationCanvas({
                       const updates = selectedBboxIds
                         .map((id) => {
                           const node = nodeRefs.current[id];
-                          return node ? { id, x: node.x(), y: node.y() } : null;
+                          // node coords are stage space, divide back to image space
+                          return node
+                            ? { id, x: node.x() / scale, y: node.y() / scale }
+                            : null;
                         })
                         .filter(Boolean);
                       updateBboxes(updates);
@@ -535,8 +541,13 @@ function AnnotationCanvas({
                         />
                       </>
                     )}
-                    {/* class:id tag above bbox */}
-                    <Label x={0} y={-20}>
+                    {/* class tag above bbox */}
+                    <Label
+                      x={0}
+                      y={-20 / scale}
+                      scaleX={1 / scale}
+                      scaleY={1 / scale}
+                    >
                       <Tag fill="white" />
                       <Text
                         text={
@@ -564,18 +575,18 @@ function AnnotationCanvas({
                 const bbox = frameBboxes.find((b) => b.id === resizingId);
                 if (!bbox) return;
 
-                const scaleX = node.scaleX();
-                const scaleY = node.scaleY();
-                node.scaleX(1); // reset scale, apply to width/height instead
-                node.scaleY(1);
+                const ratioX = node.scaleX() / scale;
+                const ratioY = node.scaleY() / scale;
+                node.scaleX(scale); // apply the resize to width/height instead
+                node.scaleY(scale);
 
                 updateBboxes([
                   {
                     id: resizingId,
-                    x: node.x(),
-                    y: node.y(),
-                    width: Math.max(5, bbox.width * scaleX),
-                    height: Math.max(5, bbox.height * scaleY),
+                    x: node.x() / scale, // node coords are stage space
+                    y: node.y() / scale,
+                    width: Math.max(5, bbox.width * ratioX),
+                    height: Math.max(5, bbox.height * ratioY),
                   },
                 ]);
               }}
@@ -588,10 +599,10 @@ function AnnotationCanvas({
             {/* preview rect */}
             {preview && (
               <Rect
-                x={preview.x}
-                y={preview.y}
-                width={preview.width}
-                height={preview.height}
+                x={preview.x * scale}
+                y={preview.y * scale}
+                width={preview.width * scale}
+                height={preview.height * scale}
                 stroke="#ffffff"
                 strokeWidth={1}
                 dash={[6, 3]}

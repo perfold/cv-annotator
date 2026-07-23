@@ -148,8 +148,44 @@ const useStore = create((set, get) => ({
       origH,
       dispW,
       dispH,
+      coordSpace: "image", // marks boxes as original-image pixels
       savedAt: new Date().toISOString(),
     });
+  },
+
+  // convert bboxes from display space pixels back to image space pixels
+  migrateSession: (session) => {
+    if (!session?.bboxesByFrame) return session?.bboxesByFrame ?? {};
+    if (session.coordSpace === "image") return session.bboxesByFrame; // already converted, don't scale twice
+
+    const { origW, origH, dispW, dispH } = session;
+    // imageDims defaults to zeros, so a session saved before any frame rendered
+    // has nothing to scale by. leave those boxes alone rather than divide by zero
+    if (!origW || !origH || !dispW || !dispH) {
+      console.warn(
+        "annotations have no usable image dims, skipping coordinate migration. boxes may be misaligned",
+      );
+      return session.bboxesByFrame;
+    }
+
+    const scaleX = origW / dispW;
+    const scaleY = origH / dispH;
+    const next = {};
+    for (const [frameIdx, boxes] of Object.entries(session.bboxesByFrame)) {
+      next[frameIdx] = boxes.map((b) => ({
+        ...b,
+        x: b.x * scaleX,
+        y: b.y * scaleY,
+        width: b.width * scaleX,
+        height: b.height * scaleY,
+        // polygon points are box-local offsets, so they scale by the same factor
+        // but keep their origin. null stays null
+        polygon: b.polygon
+          ? b.polygon.map(([px, py]) => [px * scaleX, py * scaleY])
+          : b.polygon,
+      }));
+    }
+    return next;
   },
 
   loadSession: async (videoName) => {
@@ -186,7 +222,7 @@ const useStore = create((set, get) => ({
       );
       if (resume) {
         set({
-          bboxesByFrame: session.bboxesByFrame,
+          bboxesByFrame: get().migrateSession(session),
           classes: session.classes,
           classColors: session.classColors ?? {},
         });
@@ -231,7 +267,7 @@ const useStore = create((set, get) => ({
         );
         if (resume) {
           set({
-            bboxesByFrame: session.bboxesByFrame,
+            bboxesByFrame: get().migrateSession(session),
             classes: session.classes,
             classColors: session.classColors ?? {},
           });
@@ -261,8 +297,8 @@ const useStore = create((set, get) => ({
       pushHistory,
     } = get();
     if (!videoName) return;
-    const { origW, origH, dispW, dispH } = imageDims;
-    if (!dispW || !dispH) {
+    const { origW, origH } = imageDims;
+    if (!origW || !origH) {
       alert("Load a video first.");
       return;
     }
@@ -277,8 +313,6 @@ const useStore = create((set, get) => ({
         { timeout: 0 }, // no timeout, bc inference can take a while
       );
       const { detections } = res.data;
-      const scaleX = dispW / origW;
-      const scaleY = dispH / origH;
 
       // merge new classes + assign colours
       const newClasses = [...classes];
@@ -307,10 +341,10 @@ const useStore = create((set, get) => ({
         const newBboxes = dets.map((d) => ({
           id: crypto.randomUUID(),
           className: d.class_name,
-          x: d.xtl * scaleX,
-          y: d.ytl * scaleY,
-          width: (d.xbr - d.xtl) * scaleX,
-          height: (d.ybr - d.ytl) * scaleY,
+          x: d.xtl, // backend already returns original image pixels, no conversion needed
+          y: d.ytl,
+          width: d.xbr - d.xtl,
+          height: d.ybr - d.ytl,
           confidence: d.confidence,
           trackId: d.track_id ?? null,
           tags: [],
@@ -466,13 +500,11 @@ const useStore = create((set, get) => ({
       return;
     }
 
-    const { origW, origH, dispW, dispH } = imageDims;
-    if (!origW || !dispW) {
+    const { origW, origH } = imageDims;
+    if (!origW || !origH) {
       alert("Load a video first.");
       return;
     }
-    const scaleX = dispW / origW;
-    const scaleY = dispH / origH;
 
     set({ isPropagating: true });
     try {
@@ -481,12 +513,12 @@ const useStore = create((set, get) => ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           start_frame: currentFrame,
-          // scale the seed box UP into original pixel space for csrt
+          // boxes are already original pixel space, csrt takes them as-is
           box: {
-            x: src.x / scaleX,
-            y: src.y / scaleY,
-            width: src.width / scaleX,
-            height: src.height / scaleY,
+            x: src.x,
+            y: src.y,
+            width: src.width,
+            height: src.height,
           },
         }),
       });
@@ -510,17 +542,16 @@ const useStore = create((set, get) => ({
       const nextTags = tags.includes(PROP_TAG) ? tags : [...tags, PROP_TAG];
 
       pushHistory();
-      // scale each returned box back DOWN into display space + write across frames
       const next = { ...bboxesByFrame };
       for (const [frameIdxStr, b] of Object.entries(boxes)) {
         const frameIdx = parseInt(frameIdxStr);
         const newBox = {
           id: crypto.randomUUID(),
           className: src.className,
-          x: b.x * scaleX,
-          y: b.y * scaleY,
-          width: b.width * scaleX,
-          height: b.height * scaleY,
+          x: b.x,
+          y: b.y,
+          width: b.width,
+          height: b.height,
           tags: [PROP_TAG],
           // no conf field, to indicate that bbox is drawn manually vs detected by yolo
         };
@@ -553,13 +584,11 @@ const useStore = create((set, get) => ({
       return;
     }
 
-    const { origW, origH, dispW, dispH } = imageDims;
-    if (!origW || !dispW) {
+    const { origW, origH } = imageDims;
+    if (!origW || !origH) {
       alert("Load a video first.");
       return;
     }
-    const scaleX = dispW / origW;
-    const scaleY = dispH / origH;
 
     set({ isPolygonTightening: true });
     try {
@@ -570,13 +599,12 @@ const useStore = create((set, get) => ({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             frame_idx: currentFrame,
-            // scale each box UP into original pixel space for sam (same as the propagate seed)
             boxes: targets.map((b) => ({
               id: b.id,
-              x: b.x / scaleX,
-              y: b.y / scaleY,
-              width: b.width / scaleX,
-              height: b.height / scaleY,
+              x: b.x,
+              y: b.y,
+              width: b.width,
+              height: b.height,
             })),
           }),
         },
@@ -588,21 +616,15 @@ const useStore = create((set, get) => ({
       }
 
       const updates = (data.boxes ?? []).map((b) => {
-        const x = b.x * scaleX;
-        const y = b.y * scaleY;
-
         const polygon = b.polygon
-          ? b.polygon.map(([px, py]) => [
-              (px - b.x) * scaleX,
-              (py - b.y) * scaleY,
-            ])
+          ? b.polygon.map(([px, py]) => [px - b.x, py - b.y])
           : null;
         return {
           id: b.id,
-          x,
-          y,
-          width: b.width * scaleX,
-          height: b.height * scaleY,
+          x: b.x,
+          y: b.y,
+          width: b.width,
+          height: b.height,
           polygon,
         };
       });
@@ -631,13 +653,11 @@ const useStore = create((set, get) => ({
       return;
     }
 
-    const { origW, origH, dispW, dispH } = imageDims;
-    if (!origW || !dispW) {
+    const { origW, origH } = imageDims;
+    if (!origW || !origH) {
       alert("Load a video first.");
       return;
     }
-    const scaleX = dispW / origW;
-    const scaleY = dispH / origH;
 
     set({ isBoxTightening: true });
     try {
@@ -650,10 +670,10 @@ const useStore = create((set, get) => ({
             frame_idx: currentFrame,
             boxes: targets.map((b) => ({
               id: b.id,
-              x: b.x / scaleX,
-              y: b.y / scaleY,
-              width: b.width / scaleX,
-              height: b.height / scaleY,
+              x: b.x,
+              y: b.y,
+              width: b.width,
+              height: b.height,
             })),
           }),
         },
@@ -666,10 +686,10 @@ const useStore = create((set, get) => ({
 
       const updates = (data.boxes ?? []).map((b) => ({
         id: b.id,
-        x: b.x * scaleX,
-        y: b.y * scaleY,
-        width: b.width * scaleX,
-        height: b.height * scaleY,
+        x: b.x,
+        y: b.y,
+        width: b.width,
+        height: b.height,
         polygon: null,
       }));
       if (updates.length === 0) return;
@@ -702,13 +722,11 @@ const useStore = create((set, get) => ({
       return;
     }
 
-    const { origW, origH, dispW, dispH } = imageDims;
-    if (!origW || !dispW) {
+    const { origW, origH } = imageDims;
+    if (!origW || !origH) {
       alert("Load a video first.");
       return;
     }
-    const scaleX = dispW / origW;
-    const scaleY = dispH / origH;
 
     // match_class on by default, only tags same class bboxes
     const matchClass = opts.matchClass ?? faMatchClass;
@@ -719,10 +737,10 @@ const useStore = create((set, get) => ({
       existing[frameIdxStr] = boxes.map((b) => ({
         id: b.id,
         className: b.className,
-        x: b.x / scaleX,
-        y: b.y / scaleY,
-        width: b.width / scaleX,
-        height: b.height / scaleY,
+        x: b.x,
+        y: b.y,
+        width: b.width,
+        height: b.height,
       }));
     }
 
@@ -735,12 +753,11 @@ const useStore = create((set, get) => ({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             start_frame: currentFrame,
-            // scale the seed box up into original pixel space for csrt
             box: {
-              x: src.x / scaleX,
-              y: src.y / scaleY,
-              width: src.width / scaleX,
-              height: src.height / scaleY,
+              x: src.x,
+              y: src.y,
+              width: src.width,
+              height: src.height,
             },
             existing,
             fa_class: src.className, // only tag same-class boxes when match_class is on
@@ -956,8 +973,8 @@ const useStore = create((set, get) => ({
   importXML: (file) => {
     const { videoName, imageDims, tags, classes, classColors } = get();
     if (!videoName) return;
-    const { dispW, dispH } = imageDims;
-    if (!dispW || !dispH) {
+    const { origW, origH } = imageDims;
+    if (!origW || !origH) {
       alert("Load the video first before importing.");
       return;
     }
@@ -978,9 +995,8 @@ const useStore = create((set, get) => ({
         return;
       }
 
-      // scale from original image space to current display space
-      const scaleX = dispW / xmlOrigW;
-      const scaleY = dispH / xmlOrigH;
+      const scaleX = origW / xmlOrigW;
+      const scaleY = origH / xmlOrigH;
 
       const STANDARD_ATTRS = new Set([
         "frame",
@@ -1067,9 +1083,7 @@ const useStore = create((set, get) => ({
       tags,
       imageDims,
     } = get();
-    const { origW, origH, dispW, dispH } = imageDims;
-    const scaleX = origW / dispW;
-    const scaleY = origH / dispH;
+    const { origW, origH } = imageDims;
 
     // CVAT timestamp format: "2026-05-22 02:31:39.107577+00:00"
     const formatDate = (date) =>
@@ -1098,10 +1112,10 @@ const useStore = create((set, get) => ({
 
     for (const [frameIndex, boxes] of Object.entries(bboxesByFrame)) {
       for (const box of boxes) {
-        const xtl = (box.x * scaleX).toFixed(2);
-        const ytl = (box.y * scaleY).toFixed(2);
-        const xbr = ((box.x + box.width) * scaleX).toFixed(2);
-        const ybr = ((box.y + box.height) * scaleY).toFixed(2);
+        const xtl = box.x.toFixed(2);
+        const ytl = box.y.toFixed(2);
+        const xbr = (box.x + box.width).toFixed(2);
+        const ybr = (box.y + box.height).toFixed(2);
         const nextFrame = parseInt(frameIndex) + 1;
 
         const boxTags = box.tags ?? [];

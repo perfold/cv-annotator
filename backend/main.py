@@ -982,12 +982,19 @@ async def export_chips(payload: dict = Body(...)):
         disp_w = data.get("dispW")
         disp_h = data.get("dispH")
 
-        if not all([orig_w, orig_h, disp_w, disp_h]):
+        if not all([orig_w, orig_h]):
             skipped += 1
             continue
 
-        scale_x = orig_w / disp_w # make sure bbox properly aligns with target in image
-        scale_y = orig_h / disp_h
+        # files marked "image" already hold original pixels. older ones are still display-space and need the saved dims to convert
+        if data.get("coordSpace") == "image":
+            scale_x = scale_y = 1.0
+        elif all([disp_w, disp_h]):
+            scale_x = orig_w / disp_w 
+            scale_y = orig_h / disp_h
+        else:
+            skipped += 1
+            continue
 
         for frame_idx_str, bboxes in bboxes_by_frame.items():
             frame_idx = int(frame_idx_str)
@@ -1052,11 +1059,17 @@ async def compute_embeddings(video_name: str, payload: dict = Body(...)):
     disp_w = data.get("dispW")
     disp_h = data.get("dispH")
 
-    if not all([orig_w, orig_h, disp_w, disp_h]):
+    if not all([orig_w, orig_h]):
         return {"error": "missing image dims. re-save the session first"}
 
-    scale_x = orig_w / disp_w # display-space bbox coords to original image space
-    scale_y = orig_h / disp_h
+    # files marked "image" already hold original pixels, older ones don't
+    if data.get("coordSpace") == "image":
+        scale_x = scale_y = 1.0
+    elif all([disp_w, disp_h]):
+        scale_x = orig_w / disp_w 
+        scale_y = orig_h / disp_h
+    else:
+        return {"error": "missing image dims. re-save the session first"}
 
     # collect all (frame_path, bbox_id, crop_box) tuples upfront on the main thread
     crops = [] # list of (frame_path, bbox_id, (left, top, right, bottom))
@@ -1165,13 +1178,17 @@ async def detect_outliers(video_name: str, payload: dict = Body(...)):
     if total_annotated_frames == 0:
         return {"outliers": []}
 
-    # display-space to original-image px, so the min-area gate is in real pixels (defaults to 1 if dims missing)
+    # min-area gate needs real pixels. "image" files are already there, older
+    # display-space ones get converted with the dims saved alongside
     orig_w = data.get("origW")
     orig_h = data.get("origH")
     disp_w = data.get("dispW")
     disp_h = data.get("dispH")
-    scale_x = orig_w / disp_w if (orig_w and disp_w) else 1.0
-    scale_y = orig_h / disp_h if (orig_h and disp_h) else 1.0
+    if data.get("coordSpace") == "image":
+        scale_x = scale_y = 1.0
+    else:
+        scale_x = orig_w / disp_w if (orig_w and disp_w) else 1.0
+        scale_y = orig_h / disp_h if (orig_h and disp_h) else 1.0
 
     # load embedding cache if available
     cache_path = OUTPUT_DIR / video_name / EMBEDDINGS_CACHE_FILE
