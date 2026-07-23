@@ -135,7 +135,7 @@ function AnnotationsPanel() {
             useStore.setState({ showOnlyFlagged: !showOnlyFlagged })
           }
         >
-          {showOnlyFlagged ? "Only flagged ✓ (O)" : "Only flagged (O)"}
+          {showOnlyFlagged ? "Only flagged ✓ (L)" : "Only flagged (L)"}
         </button>
       </div>
     </>

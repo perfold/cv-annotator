@@ -8,11 +8,9 @@ function OutliersPanel() {
     isScanning,
     embPctThresh,
     rarePctThresh,
-    embeddingStatus,
     videoName,
     scanOutliers,
     confirmAllOutliers,
-    computeEmbeddings,
     removeAllFa,
     removeAllOutliers,
   } = useStore((s) => s);
@@ -35,7 +33,7 @@ function OutliersPanel() {
           disabled={!videoName}
           onClick={removeAllFa}
         >
-          Remove all FA
+          Remove all FA (D)
         </button>
         {/* remove outlier button */}
         <button
@@ -44,7 +42,7 @@ function OutliersPanel() {
           disabled={!videoName}
           onClick={removeAllOutliers}
         >
-          Remove all Outliers
+          Remove all Outliers (R)
         </button>
       </div>
 
@@ -121,60 +119,6 @@ function OutliersPanel() {
           />
         </div>
 
-        {/* embedding section: compute button + status */}
-        <div
-          style={{
-            borderTop: "1px solid #333",
-            paddingTop: 8,
-            marginBottom: 8,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginBottom: 4,
-            }}
-          >
-            <span style={{ fontSize: 11, color: "#aaa" }}>
-              Embeddings (Dinov3 ConvNext Base)
-            </span>
-            {/* status indicator: idle/computing/ready */}
-            <span
-              style={{
-                fontSize: 10,
-                color:
-                  embeddingStatus === "ready"
-                    ? "#4caf50" // green when ready
-                    : embeddingStatus === "computing"
-                      ? "#ffcc00" // amber while running
-                      : "#666", // grey when idle
-              }}
-            >
-              {embeddingStatus === "ready"
-                ? "✓ ready"
-                : embeddingStatus === "computing"
-                  ? "computing..."
-                  : "not computed"}
-            </span>
-          </div>
-
-          {/* compute button: recompute if already ready */}
-          <button
-            style={{ width: "100%", marginBottom: 0 }}
-            tabIndex={-1}
-            disabled={!videoName || embeddingStatus === "computing"}
-            onClick={() => computeEmbeddings(embeddingStatus === "ready")} // force=true if recomputing
-          >
-            {embeddingStatus === "computing"
-              ? "Computing..."
-              : embeddingStatus === "ready"
-                ? "Recompute Embeddings"
-                : "Compute Embeddings"}
-          </button>
-        </div>
-
         {/* scan button */}
         <button
           style={{ width: "100%", marginBottom: 8 }}
@@ -182,7 +126,7 @@ function OutliersPanel() {
           disabled={!videoName || isScanning}
           onClick={scanOutliers}
         >
-          {isScanning ? "Scanning..." : `Scan for Outliers`}
+          {isScanning ? "Scanning..." : "Scan for Outliers (S)"}
         </button>
 
         {/* outlier list */}

@@ -1,5 +1,7 @@
 import { useEffect, useRef } from "react";
 import useStore from "./store";
+import useHotkeys from "./useHotkeys";
+import { PopoverActionsContext } from "./usePopoverKeys";
 import AnnotationCanvas from "./components/AnnotationCanvas";
 import HeaderBar from "./components/HeaderBar";
 import Panel from "./components/Panel";
@@ -23,6 +25,7 @@ function App() {
   const stateRef = useRef({}); // keeps track of bbox states
   const lastSavedRef = useRef(null);
   const intervalRef = useRef(null);
+  const popoverActions = useRef({});
 
   // grab states from zustand store
   const {
@@ -156,10 +159,18 @@ function App() {
     return () => clearInterval(interval);
   }, [videoName, bboxesByFrame, classes, classColors]);
 
+  // panel/popover/bbox shortcuts live in keymap.js and dispatch through this hook
+  useHotkeys({ videoName, popoverActions });
+
   // keyboard controls
   useEffect(() => {
     if (!videoName) return;
     function handleKeyDown(e) {
+      // ignore keys typed into a text field
+      const tag = e.target?.tagName;
+      const typing =
+        tag === "INPUT" || tag === "TEXTAREA" || e.target?.isContentEditable;
+
       // ctrl shortcuts
       if (e.ctrlKey) {
         if (!["s", "z", "y", "c", "v", "a"].includes(e.key)) return;
@@ -179,7 +190,9 @@ function App() {
         return;
       }
 
-      // other shortcuts
+      if (typing) return;
+
+      // frame navigation
       if (e.key === "ArrowLeft") prevFrame(); // regular 1 frame skip
       if (e.key === "ArrowRight") nextFrame();
       if (e.key === ",")
@@ -193,34 +206,6 @@ function App() {
       if (e.key === " ") {
         e.preventDefault(); // to prevent spacebar from triggering file explorer directly after video upload
         useStore.setState({ isPlaying: !isPlaying });
-      }
-      if (e.key === "w" || e.key === "W")
-        useStore.setState({ mode: mode === "draw" ? "select" : "draw" }); // toggle between select and draw mode
-      // propagate the single selected box forward with csrt when press p
-      if ((e.key === "p" || e.key === "P") && selectedBboxIds.length === 1) {
-        e.preventDefault();
-        if (!useStore.getState().isPropagating)
-          useStore.getState().propagateBox(selectedBboxIds[0]);
-      }
-      if ((e.key === "f" || e.key === "F") && selectedBboxIds.length === 1) {
-        e.preventDefault();
-        if (!useStore.getState().isMarkingFa)
-          useStore.getState().markFaTrack(selectedBboxIds[0]);
-      }
-      // hide every bbox
-      if (e.key === "h" || e.key === "H")
-        useStore.setState({
-          hideAllBboxes: !useStore.getState().hideAllBboxes,
-        });
-      // show only outliers and FA
-      if (e.key === "o" || e.key === "O")
-        useStore.setState({
-          showOnlyFlagged: !useStore.getState().showOnlyFlagged,
-        });
-      // tags outliers
-      if ((e.key === "g" || e.key === "G") && selectedBboxIds.length === 1) {
-        e.preventDefault();
-        useStore.getState().confirmOutlier(selectedBboxIds[0]);
       }
       if (
         (e.key === "Delete" || e.key === "Backspace") &&
@@ -281,196 +266,200 @@ function App() {
   const rightOpen = ui.panels.outliers.open || ui.panels.tags.open;
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100vh",
-        textAlign: "center",
-      }}
-    >
-      <HeaderBar />
-
-      {/* file inputs */}
-      <input
-        type="file"
-        accept="video/*"
-        id="video-input"
-        style={{ display: "none" }}
-        onChange={(e) => uploadVideo(e.target.files[0])}
-      />
-      <input
-        type="file"
-        accept=".xml"
-        id="import-xml-input"
-        style={{ display: "none" }}
-        onChange={(e) => {
-          if (e.target.files[0]) importXML(e.target.files[0]);
+    <PopoverActionsContext.Provider value={popoverActions}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          height: "100vh",
+          textAlign: "center",
         }}
-      />
+      >
+        <HeaderBar />
 
-      <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
-        {/* left column: annotations on top, classes below when open */}
-        {leftOpen && (
-          <div
-            style={{
-              width: ui.panels.annotations.size,
-              flexShrink: 0,
-              display: "flex",
-              flexDirection: "column",
-              gap: 4,
-              padding: 4,
-              minHeight: 0,
-            }}
-          >
-            {ui.panels.annotations.open && (
-              <Panel name="annotations" title="Annotations">
-                <AnnotationsPanel />
-              </Panel>
-            )}
-            {ui.panels.classes.open && (
-              <Panel name="classes" title="Classes">
-                <ClassesPanel />
-              </Panel>
-            )}
-          </div>
-        )}
-
-        {/* center area */}
-        <div
-          style={{
-            flex: 1,
-            minWidth: 0,
-            padding: "2px 8px",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "stretch",
-            textAlign: "center",
+        {/* file inputs */}
+        <input
+          type="file"
+          accept="video/*"
+          id="video-input"
+          style={{ display: "none" }}
+          onChange={(e) => uploadVideo(e.target.files[0])}
+        />
+        <input
+          type="file"
+          accept=".xml"
+          id="import-xml-input"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            if (e.target.files[0]) importXML(e.target.files[0]);
           }}
-        >
-          {/* konva stage: image display */}
-          {videoName && (
+        />
+
+        <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
+          {/* left column: annotations on top, classes below when open */}
+          {leftOpen && (
             <div
               style={{
-                width: "100%",
-                flex: 1,
-                minHeight: 0,
+                width: ui.panels.annotations.size,
+                flexShrink: 0,
                 display: "flex",
                 flexDirection: "column",
+                gap: 4,
+                padding: 4,
+                minHeight: 0,
               }}
             >
+              {ui.panels.annotations.open && (
+                <Panel name="annotations" title="Annotations">
+                  <AnnotationsPanel />
+                </Panel>
+              )}
+              {ui.panels.classes.open && (
+                <Panel name="classes" title="Classes">
+                  <ClassesPanel />
+                </Panel>
+              )}
+            </div>
+          )}
+
+          {/* center area */}
+          <div
+            style={{
+              flex: 1,
+              minWidth: 0,
+              padding: "2px 8px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "stretch",
+              textAlign: "center",
+            }}
+          >
+            {/* konva stage: image display */}
+            {videoName && (
               <div
                 style={{
+                  width: "100%",
+                  flex: 1,
+                  minHeight: 0,
                   display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 12,
-                  flexShrink: 0,
+                  flexDirection: "column",
                 }}
               >
-                <p style={{ margin: "2px 0" }}>
-                  Loaded: {videoName} ({frameCount} frames)
-                </p>{" "}
-                {/* shows total frame ct */}
-                <span
+                <div
                   style={{
-                    fontSize: 12,
-                    color: "#009000",
-                    opacity: showSaved ? 1 : 0,
-                    transition: "opacity 0.5s ease",
-                    pointerEvents: "none",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 12,
+                    flexShrink: 0,
                   }}
                 >
-                  ✓ Saved
-                </span>
-                {isExtracting && (
-                  <span style={{ color: "#750000", fontSize: 14 }}>
-                    Re-extracting frames, please wait...
+                  <p style={{ margin: "2px 0" }}>
+                    Loaded: {videoName} ({frameCount} frames)
+                  </p>{" "}
+                  {/* shows total frame ct */}
+                  <span
+                    style={{
+                      fontSize: 12,
+                      color: "#009000",
+                      opacity: showSaved ? 1 : 0,
+                      transition: "opacity 0.5s ease",
+                      pointerEvents: "none",
+                    }}
+                  >
+                    ✓ Saved
                   </span>
-                )}
+                  {isExtracting && (
+                    <span style={{ color: "#750000", fontSize: 14 }}>
+                      Re-extracting frames, please wait...
+                    </span>
+                  )}
+                </div>
+                {/* annotation canvas */}
+                <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
+                  <AnnotationCanvas
+                    frameUrl={`http://localhost:8000/frame/${videoName}/${currentFrame}?q=${quality}`}
+                    activeClass={activeClass}
+                    classColors={classColors}
+                    frameBboxes={frameBboxes}
+                    addBbox={addBbox}
+                    selectedBboxIds={selectedBboxIds}
+                    setSelectedBboxIds={(ids) =>
+                      useStore.setState({ selectedBboxIds: ids })
+                    }
+                    openContextMenu={openContextMenu}
+                    mode={mode}
+                    updateBboxes={updateBboxes}
+                    onDimsReady={(dims) =>
+                      useStore.setState({ imageDims: dims })
+                    }
+                    outlierBboxIds={outliers.map((o) => o.bbox_id)}
+                    outlierColor={OUTLIER_COLOR}
+                    hideAllBboxes={hideAllBboxes}
+                    showOnlyFlagged={showOnlyFlagged}
+                  />{" "}
+                  {/* calls fastAPI for image */}
+                </div>
+                <div style={{ flexShrink: 0 }}>
+                  <VideoScrubber
+                    formatTime={formatTime}
+                    prevFrame={prevFrame}
+                    nextFrame={nextFrame}
+                  />
+                </div>
               </div>
-              {/* annotation canvas */}
-              <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
-                <AnnotationCanvas
-                  frameUrl={`http://localhost:8000/frame/${videoName}/${currentFrame}?q=${quality}`}
-                  activeClass={activeClass}
-                  classColors={classColors}
-                  frameBboxes={frameBboxes}
-                  addBbox={addBbox}
-                  selectedBboxIds={selectedBboxIds}
-                  setSelectedBboxIds={(ids) =>
-                    useStore.setState({ selectedBboxIds: ids })
-                  }
-                  openContextMenu={openContextMenu}
-                  mode={mode}
-                  updateBboxes={updateBboxes}
-                  onDimsReady={(dims) => useStore.setState({ imageDims: dims })}
-                  outlierBboxIds={outliers.map((o) => o.bbox_id)}
-                  outlierColor={OUTLIER_COLOR}
-                  hideAllBboxes={hideAllBboxes}
-                  showOnlyFlagged={showOnlyFlagged}
-                />{" "}
-                {/* calls fastAPI for image */}
-              </div>
-              <div style={{ flexShrink: 0 }}>
-                <VideoScrubber
-                  formatTime={formatTime}
-                  prevFrame={prevFrame}
-                  nextFrame={nextFrame}
-                />
-              </div>
+            )}
+          </div>
+
+          {/* right column: outliers on top, tags below when open */}
+          {rightOpen && (
+            <div
+              style={{
+                width: ui.panels.outliers.size,
+                flexShrink: 0,
+                display: "flex",
+                flexDirection: "column",
+                gap: 4,
+                padding: 4,
+                minHeight: 0,
+              }}
+            >
+              {ui.panels.outliers.open && (
+                <Panel name="outliers" title="Outlier Detection">
+                  <OutliersPanel />
+                </Panel>
+              )}
+              {ui.panels.tags.open && (
+                <Panel name="tags" title="Tags">
+                  <TagsPanel />
+                </Panel>
+              )}
             </div>
           )}
         </div>
 
-        {/* right column: outliers on top, tags below when open */}
-        {rightOpen && (
-          <div
-            style={{
-              width: ui.panels.outliers.size,
-              flexShrink: 0,
-              display: "flex",
-              flexDirection: "column",
-              gap: 4,
-              padding: 4,
-              minHeight: 0,
-            }}
-          >
-            {ui.panels.outliers.open && (
-              <Panel name="outliers" title="Outlier Detection">
-                <OutliersPanel />
-              </Panel>
-            )}
-            {ui.panels.tags.open && (
-              <Panel name="tags" title="Tags">
-                <TagsPanel />
-              </Panel>
-            )}
-          </div>
-        )}
+        {/* popovers */}
+        <ImportPopover />
+        <ExportPopover saveSession={saveSession} lastSavedRef={lastSavedRef} />
+        <ModelsPopover />
+
+        <ContextMenu />
+
+        {/* video selection for export to csv */}
+        <ProjectModal
+          show={showStatsModal}
+          setShow={(v) => useStore.setState({ showStatsModal: v })}
+          mode="stats"
+        />
+
+        {/* video selection for chip export */}
+        <ProjectModal
+          show={showChipsModal}
+          setShow={(v) => useStore.setState({ showChipsModal: v })}
+          mode="chips"
+        />
       </div>
-
-      {/* popovers */}
-      <ImportPopover />
-      <ExportPopover saveSession={saveSession} lastSavedRef={lastSavedRef} />
-      <ModelsPopover />
-
-      <ContextMenu />
-
-      {/* video selection for export to csv */}
-      <ProjectModal
-        show={showStatsModal}
-        setShow={(v) => useStore.setState({ showStatsModal: v })}
-        mode="stats"
-      />
-
-      {/* video selection for chip export */}
-      <ProjectModal
-        show={showChipsModal}
-        setShow={(v) => useStore.setState({ showChipsModal: v })}
-        mode="chips"
-      />
-    </div>
+    </PopoverActionsContext.Provider>
   );
 }
 

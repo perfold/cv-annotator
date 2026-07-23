@@ -1,24 +1,5 @@
 import useStore from "../store";
-
-// header labels
-const HEADER_GROUPS = [
-  [
-    { id: "import", label: "import", action: "popover:import" },
-    { id: "export", label: "export", action: "popover:export" },
-  ],
-  [
-    { id: "models", label: "models", action: "popover:models" },
-    { id: "outliers", label: "outlier", action: "panel:outliers" },
-  ],
-  [
-    { id: "classes", label: "classes", action: "panel:classes" },
-    { id: "tags", label: "tags", action: "panel:tags" },
-  ],
-  [
-    { id: "mode", label: "draw/select", action: "mode:toggle" },
-    { id: "annotations", label: "annotations", action: "panel:annotations" },
-  ],
-];
+import { HEADER_GROUPS } from "../keymap";
 
 function HeaderBar() {
   const { mode, ui, togglePanel, setPopover } = useStore((s) => s);
@@ -117,6 +98,9 @@ function HeaderBar() {
                   >
                     select
                   </span>
+                  <span style={{ padding: "2px 4px", flexShrink: 0 }}>
+                    ({item.key})
+                  </span>
                 </button>
               );
             }
@@ -127,7 +111,7 @@ function HeaderBar() {
                 onClick={() => fire(item.action)}
                 style={labelStyle(isActive(item.action))}
               >
-                {item.label}
+                {item.label} ({item.key})
               </button>
             );
           })}

@@ -1,5 +1,6 @@
 import useStore from "../../store";
 import Popover from "../Popover";
+import usePopoverKeys from "../../usePopoverKeys";
 
 function ModelsPopover() {
   const {
@@ -18,6 +19,22 @@ function ModelsPopover() {
     runTrackingWithReId,
     computeEmbeddings,
   } = useStore((s) => s);
+
+  // scoped keys, matching POPOVER_KEYS.models in keymap.js. p shadows the global
+  // propagate while this popover is open, which is fine since propagating needs a
+  // selected box and you wouldn't have models up for that
+  const busy = !videoName || isRunningYolo || isExtracting;
+  usePopoverKeys({
+    "models:yolo": () => !busy && runYolo(),
+    "models:embeddings": () =>
+      videoName &&
+      embeddingStatus !== "computing" &&
+      computeEmbeddings(embeddingStatus === "ready"),
+    "models:track": () => !busy && runTrackingWithReId(),
+    "models:tighten": () => videoName && !isBoxTightening && samBoxTighten(),
+    "models:polygon": () =>
+      videoName && !isPolygonTightening && samPolygonTighten(),
+  });
 
   return (
     <Popover name="models" title="Models">
@@ -101,9 +118,10 @@ function ModelsPopover() {
         disabled={!videoName || isRunningYolo || isExtracting}
         onClick={runYolo}
       >
-        {isRunningYolo ? "Running…" : "Run YOLOv7-tiny"}
+        {isRunningYolo ? "Running…" : "Run YOLOv7-tiny (Y)"}
       </button>
-      {/* compute embeddings */}
+      {/* compute embeddings. same action as the outlier panel's button, surfaced
+          here too since it's a model run and the mockup lists it under models */}
       <button
         style={{ width: "100%", marginTop: 4 }}
         tabIndex={-1}
@@ -113,8 +131,8 @@ function ModelsPopover() {
         {embeddingStatus === "computing"
           ? "Computing..."
           : embeddingStatus === "ready"
-            ? "Recompute Embeddings"
-            : "Compute Embeddings"}
+            ? "Recompute Embeddings (E)"
+            : "Compute Embeddings (E)"}
       </button>
       {/* run bytetrack with visual re-id */}
       <button
@@ -123,7 +141,7 @@ function ModelsPopover() {
         disabled={!videoName || isRunningYolo || isExtracting}
         onClick={runTrackingWithReId}
       >
-        {isRunningYolo ? "Running…" : "Run Tracking + Re-ID"}
+        {isRunningYolo ? "Running…" : "Run Tracking + Re-ID (T)"}
       </button>
       {/* run fastsam to snap every box in this frame to a tightened rect */}
       <button
@@ -132,7 +150,7 @@ function ModelsPopover() {
         disabled={!videoName || isBoxTightening}
         onClick={() => samBoxTighten()}
       >
-        {isBoxTightening ? "Tightening…" : "Run FastSAM (Tighten Boxes)"}
+        {isBoxTightening ? "Tightening…" : "Run FastSAM Tighten Boxes (B)"}
       </button>
       {/* run fastsam to snap every box in this frame into a polygon */}
       <button
@@ -141,7 +159,7 @@ function ModelsPopover() {
         disabled={!videoName || isPolygonTightening}
         onClick={() => samPolygonTighten()}
       >
-        {isPolygonTightening ? "Tightening…" : "Run FastSAM (Polygon)"}
+        {isPolygonTightening ? "Tightening…" : "Run FastSAM Polygon (P)"}
       </button>
     </Popover>
   );
