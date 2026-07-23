@@ -16,3 +16,4 @@ gdown
 tensorboard
 opencv-contrib-python
 ultralytics
+huggingface-hub

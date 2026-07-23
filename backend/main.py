@@ -62,7 +62,10 @@ if not hasattr(cv2, "TrackerCSRT_create"):
     )
 
 # load dinov3 convnext base + trained supcon mlp head for visual embeddings
-DINOV3_HF_NAME = "facebook/dinov3-convnext-base-pretrain-lvd1689m"
+DINOV3_LOCAL   = MODELS_DIR / "dinov3-convnext-base"
+if not DINOV3_LOCAL.exists():
+    raise RuntimeError(f"dinov3 snapshot not found at {DINOV3_LOCAL}. run `python setup_dino.py` while online.")
+
 HEAD_WEIGHTS = MODELS_DIR / "dinov3_convnext_base_mlp_head_supcon.pt"
 if not HEAD_WEIGHTS.exists():
     raise RuntimeError(f"supcon head weights not found at {HEAD_WEIGHTS}. copy from fe-test results/finetuned/.")
@@ -81,8 +84,8 @@ class MLPHead(nn.Module):
         return F.normalize(self.net(x), dim=-1)
 
 # backbone
-_dino_processor = AutoImageProcessor.from_pretrained(DINOV3_HF_NAME)
-_dino_backbone  = AutoModel.from_pretrained(DINOV3_HF_NAME).eval().to(device)
+_dino_processor = AutoImageProcessor.from_pretrained(DINOV3_LOCAL) 
+_dino_backbone  = AutoModel.from_pretrained(DINOV3_LOCAL).eval().to(device)
 for _p in _dino_backbone.parameters():
     _p.requires_grad = False
 
