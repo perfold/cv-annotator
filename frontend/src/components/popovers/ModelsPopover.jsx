@@ -20,9 +20,6 @@ function ModelsPopover() {
     computeEmbeddings,
   } = useStore((s) => s);
 
-  // scoped keys, matching POPOVER_KEYS.models in keymap.js. p shadows the global
-  // propagate while this popover is open, which is fine since propagating needs a
-  // selected box and you wouldn't have models up for that
   const busy = !videoName || isRunningYolo || isExtracting;
   usePopoverKeys({
     "models:yolo": () => !busy && runYolo(),
@@ -120,8 +117,7 @@ function ModelsPopover() {
       >
         {isRunningYolo ? "Running…" : "Run YOLOv7-tiny (Y)"}
       </button>
-      {/* compute embeddings. same action as the outlier panel's button, surfaced
-          here too since it's a model run and the mockup lists it under models */}
+      {/* compute embeddings */}
       <button
         style={{ width: "100%", marginTop: 4 }}
         tabIndex={-1}

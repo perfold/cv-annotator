@@ -19,9 +19,6 @@ function ExportPopover({ saveSession, lastSavedRef }) {
       setTimeout(() => useStore.setState({ showSaved: false }), 5000);
     });
 
-  // scoped keys, matching POPOVER_KEYS.export in keymap.js. note x shadows the
-  // global x (which opens this popover) for as long as it's open, so escape or
-  // the header label is how you close it
   usePopoverKeys({
     "export:xml": () => videoName && exportCVATXML(),
     "export:stats": () => {
@@ -54,7 +51,7 @@ function ExportPopover({ saveSession, lastSavedRef }) {
         disabled={!videoName}
         onClick={() => {
           openStatsModal();
-          setPopover(null); // the project modal is its own overlay, don't stack it under this
+          setPopover(null);
         }}
       >
         Export Stats (S)

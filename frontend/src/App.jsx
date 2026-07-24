@@ -161,12 +161,10 @@ function App() {
     return () => clearInterval(interval);
   }, [videoName, bboxesByFrame, classes, classColors]);
 
-  // panel/popover/bbox shortcuts live in keymap.js and dispatch through this hook
-  useHotkeys({ videoName, popoverActions });
+  useHotkeys({ popoverActions });
 
   // keyboard controls
   useEffect(() => {
-    if (!videoName) return;
     function handleKeyDown(e) {
       // ignore keys typed into a text field
       const tag = e.target?.tagName;
@@ -177,7 +175,7 @@ function App() {
       if (e.ctrlKey) {
         if (!["s", "z", "y", "c", "v", "a"].includes(e.key)) return;
         e.preventDefault();
-        if (e.key === "s")
+        if (e.key === "s" && videoName)
           saveSession().then(() => {
             lastSavedRef.current = JSON.stringify(bboxesByFrame);
             useStore.setState({ showSaved: true });
@@ -193,6 +191,7 @@ function App() {
       }
 
       if (typing) return;
+      if (!videoName) return; // frame nav and delete need a loaded video
 
       // frame navigation
       if (e.key === "ArrowLeft") prevFrame(); // regular 1 frame skip

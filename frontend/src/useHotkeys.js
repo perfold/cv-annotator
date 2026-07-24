@@ -9,10 +9,8 @@ function isTypingTarget(el) {
   return tag === "INPUT" || tag === "TEXTAREA" || el.isContentEditable;
 }
 
-function useHotkeys({ videoName, popoverActions }) {
+function useHotkeys({ popoverActions }) {
   useEffect(() => {
-    if (!videoName) return;
-
     function handleKeyDown(e) {
       if (e.ctrlKey || e.metaKey) return; // ctrl shortcuts are handled in app.jsx
       if (isTypingTarget(e.target)) return;
@@ -39,6 +37,9 @@ function useHotkeys({ videoName, popoverActions }) {
         s.setPopover(action.slice(8));
         return;
       }
+
+      if (!s.videoName) return; // these need a video to be loaded in to work
+
       if (action === "mode:toggle") {
         e.preventDefault();
         useStore.setState({ mode: s.mode === "draw" ? "select" : "draw" });
@@ -55,17 +56,17 @@ function useHotkeys({ videoName, popoverActions }) {
 
       if (action === "outliers:scan") {
         e.preventDefault();
-        if (s.videoName && !s.isScanning) s.scanOutliers();
+        if (!s.isScanning) s.scanOutliers();
         return;
       }
       if (action === "outliers:removeAll") {
         e.preventDefault();
-        if (s.videoName) s.removeAllOutliers();
+        s.removeAllOutliers();
         return;
       }
       if (action === "fa:removeAll") {
         e.preventDefault();
-        if (s.videoName) s.removeAllFa();
+        s.removeAllFa();
         return;
       }
 
@@ -90,7 +91,7 @@ function useHotkeys({ videoName, popoverActions }) {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [videoName, popoverActions]);
+  }, [popoverActions]);
 }
 
 export default useHotkeys;
