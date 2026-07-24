@@ -129,6 +129,54 @@ const useStore = create((set, get) => ({
     }));
   },
 
+  // move the panels
+  movePanel: (name, x, y) => {
+    set((s) => ({
+      ui: {
+        ...s.ui,
+        panels: { ...s.ui.panels, [name]: { ...s.ui.panels[name], x, y } },
+      },
+    }));
+  },
+
+  // resize the panels
+  resizePanel: (name, w, h) => {
+    set((s) => {
+      const p = s.ui.panels[name];
+      const next =
+        p.mode === "docked"
+          ? { ...p, size: Math.max(160, w) }
+          : { ...p, w: Math.max(160, w), h: Math.max(120, h) };
+      return { ui: { ...s.ui, panels: { ...s.ui.panels, [name]: next } } };
+    });
+  },
+
+  // move a panel out into a floating window
+  floatPanel: (name, x, y, w, h) => {
+    set((s) => ({
+      ui: {
+        ...s.ui,
+        panels: {
+          ...s.ui.panels,
+          [name]: { ...s.ui.panels[name], mode: "floating", x, y, w, h },
+        },
+      },
+    }));
+  },
+
+  // snap a floating panel back into one of the edge columns
+  dockPanel: (name, edge) => {
+    set((s) => ({
+      ui: {
+        ...s.ui,
+        panels: {
+          ...s.ui.panels,
+          [name]: { ...s.ui.panels[name], mode: "docked", edge },
+        },
+      },
+    }));
+  },
+
   // open a popover by name
   setPopover: (name) => {
     set((s) => ({

@@ -1,10 +1,10 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import useStore from "./store";
 import useHotkeys from "./useHotkeys";
 import { PopoverActionsContext } from "./usePopoverKeys";
 import AnnotationCanvas from "./components/AnnotationCanvas";
 import HeaderBar from "./components/HeaderBar";
-import Panel from "./components/Panel";
+import Panel, { DOCK_EDGE_PX } from "./components/Panel";
 import AnnotationsPanel from "./components/panels/AnnotationsPanel";
 import ClassesPanel from "./components/panels/ClassesPanel";
 import OutliersPanel from "./components/panels/OutliersPanel";
@@ -26,6 +26,7 @@ function App() {
   const lastSavedRef = useRef(null);
   const intervalRef = useRef(null);
   const popoverActions = useRef({});
+  const [dockHint, setDockHint] = useState(null);
 
   // grab states from zustand store
   const {
@@ -262,8 +263,62 @@ function App() {
 
   // UI block
 
-  const leftOpen = ui.panels.annotations.open || ui.panels.classes.open;
-  const rightOpen = ui.panels.outliers.open || ui.panels.tags.open;
+  // is pointer at left or right side
+  function edgeAt(clientX) {
+    if (clientX <= DOCK_EDGE_PX) return "left";
+    if (clientX >= window.innerWidth - DOCK_EDGE_PX) return "right";
+    return null;
+  }
+
+  function handleDragMove(name, clientX) {
+    setDockHint(edgeAt(clientX));
+  }
+
+  // dock panel at the edge if its there, or leave it as a floating panel
+  function handleDragEnd(name, clientX) {
+    const edge = edgeAt(clientX);
+    setDockHint(null);
+    if (edge) useStore.getState().dockPanel(name, edge);
+  }
+
+  const isDocked = (p) => p.open && p.mode === "docked";
+  const dockedLeft = ["annotations", "classes"].filter(
+    (n) => isDocked(ui.panels[n]) && ui.panels[n].edge === "left",
+  );
+  const dockedRight = ["outliers", "tags"].filter(
+    (n) => isDocked(ui.panels[n]) && ui.panels[n].edge === "right",
+  );
+  // a panel docked to the opposite side of its default still needs a home
+  const extraLeft = ["outliers", "tags"].filter(
+    (n) => isDocked(ui.panels[n]) && ui.panels[n].edge === "left",
+  );
+  const extraRight = ["annotations", "classes"].filter(
+    (n) => isDocked(ui.panels[n]) && ui.panels[n].edge === "right",
+  );
+  const leftPanels = [...dockedLeft, ...extraLeft];
+  const rightPanels = [...dockedRight, ...extraRight];
+  const floatingPanels = Object.keys(ui.panels).filter(
+    (n) => ui.panels[n].open && ui.panels[n].mode === "floating",
+  );
+
+  const PANEL_CONTENT = {
+    annotations: { title: "Annotations", node: <AnnotationsPanel /> },
+    classes: { title: "Classes", node: <ClassesPanel /> },
+    outliers: { title: "Outlier Detection", node: <OutliersPanel /> },
+    tags: { title: "Tags", node: <TagsPanel /> },
+  };
+
+  const renderPanel = (n) => (
+    <Panel
+      key={n}
+      name={n}
+      title={PANEL_CONTENT[n].title}
+      onDragMove={handleDragMove}
+      onDragEnd={handleDragEnd}
+    >
+      {PANEL_CONTENT[n].node}
+    </Panel>
+  );
 
   return (
     <PopoverActionsContext.Provider value={popoverActions}>
@@ -296,11 +351,11 @@ function App() {
         />
 
         <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
-          {/* left column: annotations on top, classes below when open */}
-          {leftOpen && (
+          {/* left column: whichever panels are docked left, stacked */}
+          {leftPanels.length > 0 && (
             <div
               style={{
-                width: ui.panels.annotations.size,
+                width: ui.panels[leftPanels[0]].size,
                 flexShrink: 0,
                 display: "flex",
                 flexDirection: "column",
@@ -309,16 +364,7 @@ function App() {
                 minHeight: 0,
               }}
             >
-              {ui.panels.annotations.open && (
-                <Panel name="annotations" title="Annotations">
-                  <AnnotationsPanel />
-                </Panel>
-              )}
-              {ui.panels.classes.open && (
-                <Panel name="classes" title="Classes">
-                  <ClassesPanel />
-                </Panel>
-              )}
+              {leftPanels.map(renderPanel)}
             </div>
           )}
 
@@ -411,11 +457,11 @@ function App() {
             )}
           </div>
 
-          {/* right column: outliers on top, tags below when open */}
-          {rightOpen && (
+          {/* right column: whichever panels are docked right, stacked */}
+          {rightPanels.length > 0 && (
             <div
               style={{
-                width: ui.panels.outliers.size,
+                width: ui.panels[rightPanels[0]].size,
                 flexShrink: 0,
                 display: "flex",
                 flexDirection: "column",
@@ -424,19 +470,30 @@ function App() {
                 minHeight: 0,
               }}
             >
-              {ui.panels.outliers.open && (
-                <Panel name="outliers" title="Outlier Detection">
-                  <OutliersPanel />
-                </Panel>
-              )}
-              {ui.panels.tags.open && (
-                <Panel name="tags" title="Tags">
-                  <TagsPanel />
-                </Panel>
-              )}
+              {rightPanels.map(renderPanel)}
             </div>
           )}
         </div>
+
+        {/* floating panels */}
+        {floatingPanels.map(renderPanel)}
+
+        {/* edge hint */}
+        {dockHint && (
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              bottom: 0,
+              [dockHint]: 0,
+              width: DOCK_EDGE_PX,
+              background: "#75000055",
+              border: "2px dashed #750000",
+              pointerEvents: "none",
+              zIndex: 899,
+            }}
+          />
+        )}
 
         {/* popovers */}
         <ImportPopover />
