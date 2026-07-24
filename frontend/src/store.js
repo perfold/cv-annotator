@@ -114,6 +114,7 @@ const useStore = create((set, get) => ({
       },
     },
     openPopover: null,
+    columnSplit: { left: 0.5, right: 0.5 },
   },
 
   // toggle a panel open/shut
@@ -159,6 +160,19 @@ const useStore = create((set, get) => ({
         panels: {
           ...s.ui.panels,
           [name]: { ...s.ui.panels[name], mode: "floating", x, y, w, h },
+        },
+      },
+    }));
+  },
+
+  // set how a column divides between its two stacked panels
+  setColumnSplit: (edge, fraction) => {
+    set((s) => ({
+      ui: {
+        ...s.ui,
+        columnSplit: {
+          ...s.ui.columnSplit,
+          [edge]: Math.min(0.85, Math.max(0.15, fraction)),
         },
       },
     }));

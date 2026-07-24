@@ -5,6 +5,7 @@ import { PopoverActionsContext } from "./usePopoverKeys";
 import AnnotationCanvas from "./components/AnnotationCanvas";
 import HeaderBar from "./components/HeaderBar";
 import Panel, { DOCK_EDGE_PX } from "./components/Panel";
+import ColumnDivider from "./components/ColumnDivider";
 import AnnotationsPanel from "./components/panels/AnnotationsPanel";
 import ClassesPanel from "./components/panels/ClassesPanel";
 import OutliersPanel from "./components/panels/OutliersPanel";
@@ -308,17 +309,29 @@ function App() {
     tags: { title: "Tags", node: <TagsPanel /> },
   };
 
-  const renderPanel = (n) => (
+  const renderPanel = (n, flex = 1) => (
     <Panel
       key={n}
       name={n}
       title={PANEL_CONTENT[n].title}
       onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
+      flex={flex}
     >
       {PANEL_CONTENT[n].node}
     </Panel>
   );
+
+  // a column of 2 panels gets a draggable divider and an adjustable split
+  const renderColumn = (names, edge) => {
+    if (names.length !== 2) return names.map((n) => renderPanel(n));
+    const f = ui.columnSplit[edge];
+    return [
+      renderPanel(names[0], f),
+      <ColumnDivider key={`${edge}-divider`} edge={edge} />,
+      renderPanel(names[1], 1 - f),
+    ];
+  };
 
   return (
     <PopoverActionsContext.Provider value={popoverActions}>
@@ -364,7 +377,7 @@ function App() {
                 minHeight: 0,
               }}
             >
-              {leftPanels.map(renderPanel)}
+              {renderColumn(leftPanels, "left")}
             </div>
           )}
 
@@ -470,7 +483,7 @@ function App() {
                 minHeight: 0,
               }}
             >
-              {rightPanels.map(renderPanel)}
+              {renderColumn(rightPanels, "right")}
             </div>
           )}
         </div>

@@ -3,7 +3,7 @@ import useStore from "../store";
 
 const DOCK_EDGE_PX = 150; // how close to a screen edge a drop counts as docking
 
-function Panel({ name, title, children, onDragMove, onDragEnd }) {
+function Panel({ name, title, children, onDragMove, onDragEnd, flex = 1 }) {
   const panel = useStore((s) => s.ui.panels[name]);
   const { togglePanel, movePanel, resizePanel, floatPanel } = useStore(
     (s) => s,
@@ -92,7 +92,7 @@ function Panel({ name, title, children, onDragMove, onDragEnd }) {
         overflow: "hidden",
       }
     : {
-        flex: 1,
+        flex,
         minHeight: 0,
         position: "relative",
         display: "flex",
