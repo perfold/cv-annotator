@@ -323,8 +323,6 @@ async def run_yolo(video_name: str, payload: dict = Body(...)):
     conf_thres = payload.get("conf", 0.25)
     frames_dir = OUTPUT_DIR / video_name
     cache_path = frames_dir / YOLO_CACHE_FILE
-    match_thresh = payload.get("match_thresh", 0.5)
-    max_lost     = payload.get("max_lost", 60)
 
     # if no cache yet, run yolo at conf=0.01
     if not cache_path.exists():
