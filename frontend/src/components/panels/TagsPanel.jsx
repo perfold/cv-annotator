@@ -1,4 +1,5 @@
 import useStore from "../../store";
+import { THEME } from "../../constants";
 
 function TagsPanel() {
   const {
@@ -31,12 +32,12 @@ function TagsPanel() {
       <button onClick={addTag}>Add</button>
       {/* tag list & application of tags on bbox */}
       {selectedBboxIds.length === 0 && (
-        <p style={{ color: "#888", fontSize: 12 }}>
+        <p style={{ color: THEME.label, fontSize: 12 }}>
           Select a bbox to apply tags.
         </p>
       )}
       {selectedBboxIds.length > 1 && (
-        <p style={{ color: "#888", fontSize: 12 }}>
+        <p style={{ color: THEME.label, fontSize: 12 }}>
           {selectedBboxIds.length} boxes selected.
         </p>
       )}
@@ -68,8 +69,8 @@ function TagsPanel() {
               />
               <span
                 style={{
-                  background: "#750000",
-                  color: "#FFFFFF",
+                  background: THEME.accent,
+                  color: THEME.accentText,
                   borderRadius: 3,
                   padding: "1px 5px",
                   fontSize: 11,

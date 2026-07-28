@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { THEME } from "../constants";
 import useStore from "../store";
 
 const DOCK_EDGE_PX = 150; // how close to a screen edge a drop counts as docking
@@ -83,11 +84,11 @@ function Panel({ name, title, children, onDragMove, onDragEnd, flex = 1 }) {
         width: panel.w,
         height: panel.h,
         zIndex: 900,
-        background: "#1a1a1a",
+        background: THEME.surface,
         boxShadow: "0 4px 16px rgba(0,0,0,0.6)",
         display: "flex",
         flexDirection: "column",
-        border: "1px solid #ccc",
+        border: `1px solid ${THEME.border}`,
         borderRadius: 3,
         overflow: "hidden",
       }
@@ -97,7 +98,7 @@ function Panel({ name, title, children, onDragMove, onDragEnd, flex = 1 }) {
         position: "relative",
         display: "flex",
         flexDirection: "column",
-        border: "1px solid #ccc",
+        border: `1px solid ${THEME.border}`,
         borderRadius: 3,
         overflow: "hidden",
       };
@@ -114,7 +115,7 @@ function Panel({ name, title, children, onDragMove, onDragEnd, flex = 1 }) {
           alignItems: "center",
           justifyContent: "space-between",
           padding: "2px 6px",
-          borderBottom: "1px solid #ccc",
+          borderBottom: `1px solid ${THEME.border}`,
           flexShrink: 0,
           cursor: "move",
           touchAction: "none",

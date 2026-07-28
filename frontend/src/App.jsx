@@ -13,9 +13,9 @@ import TagsPanel from "./components/panels/TagsPanel";
 import ImportPopover from "./components/popovers/ImportPopover";
 import ExportPopover from "./components/popovers/ExportPopover";
 import ModelsPopover from "./components/popovers/ModelsPopover";
+import ExportSelectorPopover from "./components/popovers/ExportSelectorPopover";
 import VideoScrubber from "./components/VideoScrubber";
 import ContextMenu from "./components/ContextMenu";
-import ProjectModal from "./components/ProjectModal";
 import { OUTLIER_COLOR } from "./constants";
 
 function App() {
@@ -45,8 +45,6 @@ function App() {
     tags,
     selectedBboxIds,
     contextMenu,
-    showStatsModal,
-    showChipsModal,
     outliers,
     activeClass,
     saveSession,
@@ -514,19 +512,8 @@ function App() {
 
         <ContextMenu />
 
-        {/* video selection for export to csv */}
-        <ProjectModal
-          show={showStatsModal}
-          setShow={(v) => useStore.setState({ showStatsModal: v })}
-          mode="stats"
-        />
-
-        {/* video selection for chip export */}
-        <ProjectModal
-          show={showChipsModal}
-          setShow={(v) => useStore.setState({ showChipsModal: v })}
-          mode="chips"
-        />
+        {/* video selection for stat and chip export */}
+        <ExportSelectorPopover />
       </div>
     </PopoverActionsContext.Provider>
   );

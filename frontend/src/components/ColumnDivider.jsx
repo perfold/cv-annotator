@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { THEME } from "../constants";
 import useStore from "../store";
 
 // adjusts column's vertical split
@@ -37,7 +38,7 @@ function ColumnDivider({ edge }) {
         flexShrink: 0,
         cursor: "ns-resize",
         touchAction: "none",
-        background: "#333",
+        background: THEME.divider,
         borderRadius: 2,
       }}
     />

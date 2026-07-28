@@ -1,4 +1,5 @@
 import useStore from "../../store";
+import { THEME } from "../../constants";
 import Popover from "../Popover";
 import usePopoverKeys from "../../usePopoverKeys";
 
@@ -9,7 +10,6 @@ function ExportPopover({ saveSession, lastSavedRef }) {
     exportCVATXML,
     openStatsModal,
     openChipsModal,
-    setPopover,
   } = useStore((s) => s);
 
   const doSave = () =>
@@ -21,16 +21,8 @@ function ExportPopover({ saveSession, lastSavedRef }) {
 
   usePopoverKeys({
     "export:xml": () => videoName && exportCVATXML(),
-    "export:stats": () => {
-      if (!videoName) return;
-      openStatsModal();
-      setPopover(null);
-    },
-    "export:chips": () => {
-      if (!videoName) return;
-      openChipsModal();
-      setPopover(null);
-    },
+    "export:stats": () => videoName && openStatsModal(),
+    "export:chips": () => videoName && openChipsModal(),
     "export:save": () => videoName && doSave(),
   });
 
@@ -49,10 +41,7 @@ function ExportPopover({ saveSession, lastSavedRef }) {
         style={{ width: "100%" }}
         tabIndex={-1}
         disabled={!videoName}
-        onClick={() => {
-          openStatsModal();
-          setPopover(null);
-        }}
+        onClick={openStatsModal}
       >
         Export Stats (S)
       </button>
@@ -60,17 +49,14 @@ function ExportPopover({ saveSession, lastSavedRef }) {
         style={{ width: "100%" }}
         tabIndex={-1}
         disabled={!videoName}
-        onClick={() => {
-          openChipsModal();
-          setPopover(null);
-        }}
+        onClick={openChipsModal}
       >
         Export Chips (C)
       </button>
 
       {/* save button */}
       <button
-        style={{ width: "100%", borderTop: "1px solid #333" }}
+        style={{ width: "100%", borderTop: `1px solid ${THEME.divider}` }}
         tabIndex={-1}
         disabled={!videoName}
         onClick={doSave}

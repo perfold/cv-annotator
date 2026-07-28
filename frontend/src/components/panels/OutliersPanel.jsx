@@ -1,5 +1,5 @@
 import useStore from "../../store";
-import { OUTLIER_COLOR } from "../../constants";
+import { OUTLIER_COLOR, THEME } from "../../constants";
 
 function OutliersPanel() {
   const {
@@ -52,7 +52,7 @@ function OutliersPanel() {
           flex: 1,
           overflowY: "auto",
           minHeight: 0,
-          borderTop: "1px solid #ccc",
+          borderTop: `1px solid ${THEME.border}`,
           paddingTop: 8,
           width: "100%",
         }}
@@ -84,7 +84,7 @@ function OutliersPanel() {
             onChange={(e) =>
               useStore.setState({ embPctThresh: parseFloat(e.target.value) })
             }
-            style={{ flex: 1, accentColor: "#750000" }}
+            style={{ flex: 1, accentColor: THEME.accent }}
           />
         </div>
 
@@ -115,7 +115,7 @@ function OutliersPanel() {
             onChange={(e) =>
               useStore.setState({ rarePctThresh: parseFloat(e.target.value) })
             }
-            style={{ flex: 1, accentColor: "#750000" }}
+            style={{ flex: 1, accentColor: THEME.accent }}
           />
         </div>
 
@@ -131,7 +131,7 @@ function OutliersPanel() {
 
         {/* outlier list */}
         {outliers.length === 0 ? (
-          <p style={{ color: "#888", fontSize: 11, margin: 0 }}>
+          <p style={{ color: THEME.label, fontSize: 11, margin: 0 }}>
             {isScanning ? "" : "No outliers detected."}
           </p>
         ) : (
@@ -196,8 +196,8 @@ function OutliersPanel() {
                   <span style={{ color: OUTLIER_COLOR, fontWeight: "bold" }}>
                     {o.timestamp}
                   </span>{" "}
-                  <span style={{ color: "#ccc" }}>{o.class}</span>
-                  <div style={{ color: "#666", fontSize: 10 }}>
+                  <span style={{ color: THEME.border }}>{o.class}</span>
+                  <div style={{ color: THEME.faint, fontSize: 10 }}>
                     {o.reason === "rare_class"
                       ? "⚠ rare class"
                       : "⚠ visually different"}{" "}

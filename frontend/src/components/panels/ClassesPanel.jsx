@@ -1,4 +1,5 @@
 import useStore from "../../store";
+import { THEME } from "../../constants";
 
 function ClassesPanel() {
   const {
@@ -39,7 +40,7 @@ function ClassesPanel() {
             style={{
               fontWeight: activeClass === className ? "bold" : "normal",
               backgroundColor:
-                activeClass === className ? "#750000" : "transparent",
+                activeClass === className ? THEME.accent : "transparent",
               cursor: "pointer",
               display: "flex",
               alignItems: "center",

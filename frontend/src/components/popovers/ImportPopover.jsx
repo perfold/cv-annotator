@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import useStore from "../../store";
+import { THEME } from "../../constants";
 import Popover from "../Popover";
 import usePopoverKeys from "../../usePopoverKeys";
 
@@ -62,7 +63,7 @@ function ImportPopover() {
       {videoName && (
         <div
           style={{
-            borderTop: "1px solid #333",
+            borderTop: `1px solid ${THEME.divider}`,
             paddingTop: 8,
             display: "flex",
             alignItems: "center",
@@ -79,8 +80,8 @@ function ImportPopover() {
               style={{
                 flex: 1,
                 fontWeight: quality === q ? "bold" : "normal",
-                background: quality === q ? "#750000" : "",
-                color: quality === q ? "#fff" : "",
+                background: quality === q ? THEME.accent : "",
+                color: quality === q ? THEME.text : "",
                 padding: "4px",
               }}
             >

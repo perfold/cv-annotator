@@ -1248,7 +1248,10 @@ const useStore = create((set, get) => ({
   // open export stat video selector
   openStatsModal: async () => {
     const { videoName } = get();
-    set({ isLoadingProjects: true, showStatsModal: true });
+    set((s) => ({
+      isLoadingProjects: true,
+      ui: { ...s.ui, openPopover: "stats" },
+    }));
     const res = await axios.get("http://localhost:8000/projects");
     set({
       projectsList: res.data,
@@ -1262,7 +1265,10 @@ const useStore = create((set, get) => ({
   // export target chip selector
   openChipsModal: async () => {
     const { videoName } = get();
-    set({ isLoadingProjects: true, showChipsModal: true });
+    set((s) => ({
+      isLoadingProjects: true,
+      ui: { ...s.ui, openPopover: "chips" },
+    }));
     const res = await axios.get("http://localhost:8000/projects");
     set({
       projectsList: res.data,

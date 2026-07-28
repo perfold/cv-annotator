@@ -1,7 +1,8 @@
 import { useRef, useState, useLayoutEffect, useEffect } from "react";
+import { THEME } from "../constants";
 import useStore from "../store";
 
-function Popover({ name, title, children }) {
+function Popover({ name, title, children, center = false }) {
   const openPopover = useStore((s) => s.ui.openPopover);
   const setPopover = useStore((s) => s.setPopover);
   const isOpen = openPopover === name;
@@ -14,17 +15,37 @@ function Popover({ name, title, children }) {
       setPos(null);
       return;
     }
-    const { width, height } = menuRef.current.getBoundingClientRect();
-    const margin = 8;
-    // centre horizontally
-    let x = (window.innerWidth - width) / 2;
-    let y = Math.max(margin, window.innerHeight * 0.18);
-    if (y + height > window.innerHeight - margin) {
-      y = Math.max(margin, window.innerHeight - height - margin);
-    }
-    if (x < margin) x = margin;
-    setPos({ x, y });
-  }, [isOpen]);
+
+    const place = () => {
+      if (!menuRef.current) return;
+      const { width, height } = menuRef.current.getBoundingClientRect();
+      const margin = 8;
+      // center horizontally and vertically
+      let x = (window.innerWidth - width) / 2;
+      let y = center
+        ? Math.max(margin, (window.innerHeight - height) / 2)
+        : Math.max(margin, window.innerHeight * 0.18);
+      if (y + height > window.innerHeight - margin) {
+        y = Math.max(margin, window.innerHeight - height - margin);
+      }
+      if (x < margin) x = margin;
+      setPos({ x, y });
+    };
+
+    const el = menuRef.current;
+
+    place(); // initial position when opened
+    window.addEventListener("resize", place); // recentre when the window changes size
+
+    // recentre when the popovers size changes (when content loads in and grows it)
+    const ro = new ResizeObserver(place);
+    ro.observe(el);
+
+    return () => {
+      window.removeEventListener("resize", place);
+      ro.disconnect();
+    };
+  }, [isOpen, center]);
 
   // esc closes the popover
   useEffect(() => {
@@ -51,16 +72,17 @@ function Popover({ name, title, children }) {
           top: pos ? pos.y : 0,
           left: pos ? pos.x : 0,
           visibility: pos ? "visible" : "hidden",
-          background: "#1a1a1a",
-          border: "1px solid #555",
-          borderRadius: 4,
+          background: THEME.surface,
+          border: `1px solid ${THEME.border}`,
+          borderRadius: THEME.radius,
           zIndex: 1501,
           minWidth: 260,
-          boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
+          maxHeight: "90vh",
+          boxShadow: THEME.shadow,
           display: "flex",
           flexDirection: "column",
         }}
-        onClick={(e) => e.stopPropagation()} // prevent the backdrop from closing when clicking inside
+        onClick={(e) => e.stopPropagation()}
       >
         <div
           style={{
@@ -68,7 +90,7 @@ function Popover({ name, title, children }) {
             alignItems: "center",
             justifyContent: "space-between",
             padding: "4px 10px",
-            borderBottom: "1px solid #333",
+            borderBottom: `1px solid ${THEME.divider}`,
           }}
         >
           <h3 style={{ margin: 0, fontSize: 14 }}>{title}</h3>
@@ -86,6 +108,7 @@ function Popover({ name, title, children }) {
             display: "flex",
             flexDirection: "column",
             gap: 6,
+            minHeight: 0,
           }}
         >
           {children}

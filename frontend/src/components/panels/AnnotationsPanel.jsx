@@ -1,5 +1,5 @@
 import useStore from "../../store";
-import { OUTLIER_COLOR } from "../../constants";
+import { OUTLIER_COLOR, THEME } from "../../constants";
 
 function AnnotationsPanel() {
   const {
@@ -22,7 +22,7 @@ function AnnotationsPanel() {
       {/* annotations list */}
       <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
         {frameBboxes.length === 0 ? (
-          <p style={{ color: "#aaa" }}>No annotations yet.</p>
+          <p style={{ color: THEME.label }}>No annotations yet.</p>
         ) : (
           <ul style={{ textAlign: "left", padding: "0 16px", margin: 0 }}>
             {frameBboxes.map((b, i) => (
@@ -39,14 +39,14 @@ function AnnotationsPanel() {
                   background: selectedBboxIds.includes(b.id)
                     ? outliers.some((o) => o.bbox_id === b.id)
                       ? `${OUTLIER_COLOR}55`
-                      : "#333"
+                      : THEME.hover
                     : outliers.some((o) => o.bbox_id === b.id)
                       ? `${OUTLIER_COLOR}22`
                       : "transparent",
                   border: outliers.some((o) => o.bbox_id === b.id)
                     ? `1px solid ${OUTLIER_COLOR}`
                     : selectedBboxIds.includes(b.id)
-                      ? "1px solid #666"
+                      ? `1px solid ${THEME.faint}`
                       : "1px solid transparent",
                   borderRadius: 3,
                   marginBottom: 2,
@@ -54,7 +54,7 @@ function AnnotationsPanel() {
               >
                 {i + 1}. {b.className}{" "}
                 {b.trackId !== null && b.trackId !== undefined && (
-                  <span style={{ color: "#888", fontSize: 11 }}>
+                  <span style={{ color: THEME.label, fontSize: 11 }}>
                     {`#${b.trackId}`}
                   </span>
                 )}
@@ -78,8 +78,8 @@ function AnnotationsPanel() {
                     }}
                     title={`remove ${tag}`}
                     style={{
-                      background: "#750000",
-                      color: "#FFFFFF",
+                      background: THEME.accent,
+                      color: THEME.accentText,
                       borderRadius: 3,
                       padding: "1px 5px",
                       fontSize: 10,
@@ -108,7 +108,7 @@ function AnnotationsPanel() {
       {/* view toggles: hide all and show only flagged*/}
       <div
         style={{
-          borderTop: "1px solid #ccc",
+          borderTop: `1px solid ${THEME.border}`,
           flexShrink: 0,
           display: "flex",
           gap: 4,

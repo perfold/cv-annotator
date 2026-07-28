@@ -1,5 +1,5 @@
 import { useRef, useState, useLayoutEffect } from "react";
-import { OUTLIER_COLOR } from "../constants";
+import { THEME } from "../constants";
 import useStore from "../store";
 
 function ContextMenu() {
@@ -67,15 +67,16 @@ function ContextMenu() {
           top: pos ? pos.y : contextMenu.y,
           left: pos ? pos.x : contextMenu.x,
           visibility: pos ? "visible" : "hidden",
-          background: "#1a1a1a",
-          border: "1px solid #555",
-          borderRadius: 4,
+          background: THEME.surface,
+          border: `1px solid ${THEME.border}`,
+          borderRadius: THEME.radius,
           zIndex: 1000,
           minWidth: 140,
-          boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
+          boxShadow: THEME.shadow,
           display: "flex",
           flexDirection: manyClasses ? "row" : "column",
           alignItems: "stretch",
+          overflow: "hidden",
         }}
         onClick={(e) => e.stopPropagation()} // prevent closing when clicking inside menu
       >
@@ -86,15 +87,15 @@ function ContextMenu() {
             flexDirection: "column",
             maxHeight: manyClasses ? 320 : "none",
             overflowY: manyClasses ? "auto" : "visible",
-            borderRight: manyClasses ? "1px solid #333" : "none",
+            borderRight: manyClasses ? `1px solid ${THEME.divider}` : "none",
           }}
         >
           <div
             style={{
               padding: "4px 10px",
-              color: "#888",
+              color: THEME.label,
               fontSize: 11,
-              borderBottom: "1px solid #333",
+              borderBottom: `1px solid ${THEME.divider}`,
             }}
           >
             {" "}
@@ -115,7 +116,9 @@ function ContextMenu() {
                 alignItems: "center",
                 gap: 8,
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "#333")} // color of background of mouse hover
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.background = THEME.hover)
+              } // color of background of mouse hover
               onMouseLeave={(e) =>
                 (e.currentTarget.style.background = "transparent")
               }
@@ -144,11 +147,13 @@ function ContextMenu() {
           {/* tag toggle */}
           <div
             style={{
-              borderTop: manyClasses ? "none" : "1px solid #333",
-              borderBottom: "1px solid #333",
+              borderTop: manyClasses ? "none" : `1px solid ${THEME.divider}`,
+              borderBottom: `1px solid ${THEME.divider}`,
             }}
           >
-            <div style={{ padding: "4px 10px", color: "#888", fontSize: 11 }}>
+            <div
+              style={{ padding: "4px 10px", color: THEME.label, fontSize: 11 }}
+            >
               Tags:
             </div>
             {tags.map((tag) => {
@@ -166,7 +171,7 @@ function ContextMenu() {
                     cursor: "pointer",
                   }}
                   onMouseEnter={(e) =>
-                    (e.currentTarget.style.background = "#333")
+                    (e.currentTarget.style.background = THEME.hover)
                   }
                   onMouseLeave={(e) =>
                     (e.currentTarget.style.background = "transparent")
@@ -183,7 +188,7 @@ function ContextMenu() {
               );
             })}
           </div>
-          <div style={{ borderTop: "1px solid #333" }}>
+          <div style={{ borderTop: `1px solid ${THEME.divider}` }}>
             {/* propagate box forward with csrt (manual box -> track across frames) */}
             <div
               onClick={() => {
@@ -194,17 +199,41 @@ function ContextMenu() {
               style={{
                 padding: "6px 12px",
                 cursor: isPropagating ? "default" : "pointer",
-                color: isPropagating ? "#666" : "#4af",
+                color: isPropagating ? THEME.faint : THEME.text,
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "#333")}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.background = THEME.hover)
+              }
               onMouseLeave={(e) =>
                 (e.currentTarget.style.background = "transparent")
               }
             >
               {isPropagating ? "Propagating…" : "Propagate forward (P)"}
             </div>
+            <div style={{ borderTop: `1px solid ${THEME.divider}` }}>
+              {/* tag bbox as outlier */}
+              <div
+                onClick={() => {
+                  confirmOutlier(contextMenu.bboxId);
+                  useStore.setState({ contextMenu: null });
+                }}
+                style={{
+                  padding: "6px 12px",
+                  cursor: "pointer",
+                  color: THEME.text,
+                }}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.background = THEME.hover)
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.background = "transparent")
+                }
+              >
+                Mark as outlier (G)
+              </div>
+            </div>
           </div>
-          <div style={{ borderTop: "1px solid #333" }}>
+          <div style={{ borderTop: `1px solid ${THEME.divider}` }}>
             {/* track this box forward + tag every same-class box it hits as false-alarm */}
             <div
               onClick={() => {
@@ -215,9 +244,11 @@ function ContextMenu() {
               style={{
                 padding: "6px 12px",
                 cursor: isMarkingFa ? "default" : "pointer",
-                color: isMarkingFa ? "#666" : OUTLIER_COLOR,
+                color: isMarkingFa ? THEME.faint : THEME.text,
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "#333")}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.background = THEME.hover)
+              }
               onMouseLeave={(e) =>
                 (e.currentTarget.style.background = "transparent")
               }
@@ -238,9 +269,11 @@ function ContextMenu() {
                 gap: 6,
                 cursor: "pointer",
                 fontSize: 11,
-                color: "#888",
+                color: THEME.label,
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "#333")}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.background = THEME.hover)
+              }
               onMouseLeave={(e) =>
                 (e.currentTarget.style.background = "transparent")
               }
@@ -254,27 +287,7 @@ function ContextMenu() {
               same class only
             </div>
           </div>
-          <div style={{ borderTop: "1px solid #333" }}>
-            {/* tag bbox as outlier */}
-            <div
-              onClick={() => {
-                confirmOutlier(contextMenu.bboxId);
-                useStore.setState({ contextMenu: null });
-              }}
-              style={{
-                padding: "6px 12px",
-                cursor: "pointer",
-                color: OUTLIER_COLOR,
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "#333")}
-              onMouseLeave={(e) =>
-                (e.currentTarget.style.background = "transparent")
-              }
-            >
-              Mark as outlier (G)
-            </div>
-          </div>
-          <div style={{ borderTop: "1px solid #333" }}>
+          <div style={{ borderTop: `1px solid ${THEME.divider}` }}>
             {/* delete annotation button */}
             <div
               onClick={() => {
@@ -284,9 +297,11 @@ function ContextMenu() {
               style={{
                 padding: "6px 12px",
                 cursor: "pointer",
-                color: "#e74c3c",
+                color: THEME.danger,
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "#333")}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.background = THEME.hover)
+              }
               onMouseLeave={(e) =>
                 (e.currentTarget.style.background = "transparent")
               }

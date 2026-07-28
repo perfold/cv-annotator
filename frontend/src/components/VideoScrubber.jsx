@@ -1,3 +1,4 @@
+import { THEME } from "../constants";
 import useStore from "../store";
 
 function VideoScrubber({ formatTime, prevFrame, nextFrame }) {
@@ -12,7 +13,7 @@ function VideoScrubber({ formatTime, prevFrame, nextFrame }) {
     OUTLIER_COLOR,
   } = useStore((s) => s);
 
-  const OUTLIER_COLOR_VAL = "#ffcc00";
+  const OUTLIER_COLOR_VAL = THEME.outlierTick;
 
   return (
     <>
@@ -128,7 +129,7 @@ function VideoScrubber({ formatTime, prevFrame, nextFrame }) {
             }
             style={{
               width: "100%",
-              accentColor: "#750000",
+              accentColor: THEME.accent,
               position: "relative",
               zIndex: 2,
             }}

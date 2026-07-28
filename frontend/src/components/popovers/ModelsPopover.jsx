@@ -1,4 +1,5 @@
 import useStore from "../../store";
+import { THEME } from "../../constants";
 import Popover from "../Popover";
 import usePopoverKeys from "../../usePopoverKeys";
 
@@ -56,7 +57,7 @@ function ModelsPopover() {
           onChange={(e) =>
             useStore.setState({ yoloConf: parseFloat(e.target.value) })
           }
-          style={{ flex: 1, accentColor: "#750000", width: "100%" }}
+          style={{ flex: 1, accentColor: THEME.accent, width: "100%" }}
         />
       </div>
       {/* match threshold slider */}
@@ -80,7 +81,7 @@ function ModelsPopover() {
           onChange={(e) =>
             useStore.setState({ matchThresh: parseFloat(e.target.value) })
           }
-          style={{ flex: 1, accentColor: "#750000", width: "100%" }}
+          style={{ flex: 1, accentColor: THEME.accent, width: "100%" }}
         />
       </div>
 
@@ -105,7 +106,7 @@ function ModelsPopover() {
           onChange={(e) =>
             useStore.setState({ maxLost: parseInt(e.target.value) })
           }
-          style={{ flex: 1, accentColor: "#750000", width: "100%" }}
+          style={{ flex: 1, accentColor: THEME.accent, width: "100%" }}
         />
       </div>
       {/* run yolo button */}

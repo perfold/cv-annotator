@@ -12,7 +12,7 @@ import {
 } from "react-konva";
 import useImage from "use-image";
 import { useState, useRef, useEffect } from "react";
-import { OUTLIER_COLOR, FA_COLOR } from "../constants";
+import { OUTLIER_COLOR, FA_COLOR, THEME } from "../constants";
 
 function AnnotationCanvas({
   frameUrl,
@@ -319,7 +319,7 @@ function AnnotationCanvas({
     >
       {mode === "draw" &&
         !activeClass && ( // hides 'select class to start annotating' if in select mode
-          <p style={{ color: "#750000", margin: "4px 0" }}>
+          <p style={{ color: THEME.accent, margin: "4px 0" }}>
             Select a class to start annotating.
           </p>
         )}
@@ -616,7 +616,7 @@ function AnnotationCanvas({
                 y={Math.min(rubberBand.y1, rubberBand.y2)}
                 width={Math.abs(rubberBand.x2 - rubberBand.x1)}
                 height={Math.abs(rubberBand.y2 - rubberBand.y1)}
-                stroke="#4af"
+                stroke={THEME.border}
                 strokeWidth={1}
                 dash={[4, 4]}
                 fill="rgba(64,170,255,0.08)"

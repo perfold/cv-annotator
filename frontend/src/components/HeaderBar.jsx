@@ -1,3 +1,4 @@
+import { THEME } from "../constants";
 import useStore from "../store";
 import { HEADER_GROUPS } from "../keymap";
 
@@ -32,8 +33,8 @@ function HeaderBar() {
     fontSize: 13,
     textAlign: "center",
     padding: "2px 6px",
-    background: active ? "#750000" : "transparent",
-    color: "#fff",
+    background: active ? THEME.accent : "transparent",
+    color: THEME.text,
     border: "none",
     cursor: "pointer",
     width: "100%",
@@ -44,7 +45,7 @@ function HeaderBar() {
       style={{
         display: "flex",
         alignItems: "stretch",
-        borderBottom: "2px solid #ccc",
+        borderBottom: `2px solid ${THEME.border}`,
         padding: "4px 8px",
         flexShrink: 0,
         gap: 8,
@@ -81,7 +82,8 @@ function HeaderBar() {
                     style={{
                       flex: 1,
                       textAlign: "right",
-                      background: mode === "draw" ? "#750000" : "transparent",
+                      background:
+                        mode === "draw" ? THEME.accent : "transparent",
                       padding: "2px 6px",
                     }}
                   >
@@ -92,7 +94,8 @@ function HeaderBar() {
                     style={{
                       flex: 1,
                       textAlign: "left",
-                      background: mode === "select" ? "#750000" : "transparent",
+                      background:
+                        mode === "select" ? THEME.accent : "transparent",
                       padding: "2px 6px",
                     }}
                   >
