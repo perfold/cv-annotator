@@ -5,7 +5,12 @@ const HEADER_GROUPS = [
     { id: "export", label: "export", key: "x", action: "popover:export" },
   ],
   [
-    { id: "models", label: "models", key: "m", action: "popover:models" },
+    {
+      id: "annotations",
+      label: "annotations",
+      key: "a",
+      action: "panel:annotations",
+    },
     { id: "outliers", label: "outlier", key: "o", action: "panel:outliers" },
   ],
   [
@@ -14,12 +19,7 @@ const HEADER_GROUPS = [
   ],
   [
     { id: "mode", label: "draw/select", key: "w", action: "mode:toggle" },
-    {
-      id: "annotations",
-      label: "annotations",
-      key: "a",
-      action: "panel:annotations",
-    },
+    { id: "models", label: "models", key: "m", action: "popover:models" },
   ],
 ];
 
