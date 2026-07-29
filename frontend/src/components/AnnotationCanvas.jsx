@@ -614,10 +614,10 @@ function AnnotationCanvas({
             )}
             {rubberBand && (
               <Rect
-                x={Math.min(rubberBand.x1, rubberBand.x2)}
-                y={Math.min(rubberBand.y1, rubberBand.y2)}
-                width={Math.abs(rubberBand.x2 - rubberBand.x1)}
-                height={Math.abs(rubberBand.y2 - rubberBand.y1)}
+                x={Math.min(rubberBand.x1, rubberBand.x2) * scale}
+                y={Math.min(rubberBand.y1, rubberBand.y2) * scale}
+                width={Math.abs(rubberBand.x2 - rubberBand.x1) * scale}
+                height={Math.abs(rubberBand.y2 - rubberBand.y1) * scale}
                 stroke={THEME.border}
                 strokeWidth={1}
                 dash={[4, 4]}
