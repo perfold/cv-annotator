@@ -348,7 +348,10 @@ function App() {
           accept="video/*"
           id="video-input"
           style={{ display: "none" }}
-          onChange={(e) => uploadVideo(e.target.files[0])}
+          onChange={(e) => {
+            uploadVideo(e.target.files[0]);
+            e.target.value = ""; // let the same file be picked again under a different name
+          }}
         />
         <input
           type="file"

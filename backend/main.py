@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, Body, Form
+from fastapi import FastAPI, File, UploadFile, Body, Form, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import os
@@ -206,21 +206,72 @@ def extract_frames(video_path: str, output_folder: str, quality:int, fps: float 
     save_extraction_metadata(output_folder, quality, fps)
     return len(list(Path(output_folder).glob("*.jpg")))
 
+# characters windows refuses in a path
+INVALID_NAME_CHARS = set('<>:"/\\|?*')
+WINDOWS_RESERVED = ( # reserved device names
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{i}" for i in range(1, 10)}
+    | {f"LPT{i}" for i in range(1, 10)}
+)
+
+# returns an error string, or None if the name is safe to use as a folder name
+def validate_sequence_name(name: str) -> str | None:
+    if not name or not name.strip():
+        return "Sequence name cannot be empty"
+    if name != name.strip():
+        return "Sequence name cannot start or end with a space"
+    if name.startswith(".") or name.endswith("."):
+        return "Sequence name cannot start or end with a dot"
+    if ".." in name:
+        return "Sequence name cannot contain .."
+    if any(c in INVALID_NAME_CHARS for c in name):
+        return 'Sequence name cannot contain < > : " / \\ | ? *'
+    if any(ord(c) < 32 for c in name):
+        return "Sequence name cannot contain control characters"
+    if name.upper().split(".")[0] in WINDOWS_RESERVED:
+        return f"'{name}' is a reserved device name on windows"
+    if len(name) > 100:
+        return "Sequence name is too long (max 100 characters)"
+    return None
+
+# an empty folder left behind by a failed extraction shouldn't block reuse
+def sequence_taken(output_folder: str) -> bool:
+    folder = Path(output_folder)
+    if not folder.is_dir():
+        return False
+    return any(folder.glob("*.jpg")) or (folder / "annotations.json").exists()
+
 @app.post("/upload-video")
 
 # function that takes in video upload, and breaks it up into individual frames
 # if jpeg quality variable changed, re-extract
-async def upload_video(file: UploadFile = File(...), quality: int = Form(default=31)):
-    video_name = os.path.splitext(file.filename)[0]
-    video_path = os.path.join(INPUT_DIR, file.filename)
+async def upload_video(
+    file: UploadFile = File(...),
+    quality: int = Form(default=31),
+    sequence_name: str = Form(default=""),
+):
+    
+    ext = os.path.splitext(file.filename)[1]
+    video_name = (sequence_name or os.path.splitext(file.filename)[0]).strip()
+
+    error = validate_sequence_name(video_name)
+    if error:
+        raise HTTPException(status_code=400, detail=error)
+
     output_folder = os.path.join(OUTPUT_DIR, video_name)
+    if sequence_taken(output_folder):
+        raise HTTPException(
+            status_code=409,
+            detail=f"'{video_name}' already exists. Open it from the video list, or pick another name.",
+        )
+
+    video_path = os.path.join(INPUT_DIR, f"{video_name}{ext}")
 
     os.makedirs(INPUT_DIR, exist_ok=True)
 
-    if not os.path.exists(video_path):
-        contents = await file.read()
-        with open(video_path, "wb") as f:
-            f.write(contents)
+    contents = await file.read()
+    with open(video_path, "wb") as f:
+        f.write(contents)
 
     fps = get_fps(video_path)
 
@@ -256,9 +307,19 @@ async def load_frames_from_path(payload: dict = Body(...)):
     if not frames:
         return {"error": "No image files found in folder"}
 
-    # symlink or copy frames into output dir so existing get_frame endpoint works
-    folder_name = folder_path.name
+    folder_name = (payload.get("sequence_name") or folder_path.name).strip()
+
+    error = validate_sequence_name(folder_name)
+    if error:
+        raise HTTPException(status_code=400, detail=error)
+
     output_folder = OUTPUT_DIR / folder_name
+    if sequence_taken(str(output_folder)):
+        raise HTTPException(
+            status_code=409,
+            detail=f"'{folder_name}' already exists. Open it from the video list, or pick another name.",
+        )
+
     output_folder.mkdir(parents=True, exist_ok=True)
 
     for frame in frames:

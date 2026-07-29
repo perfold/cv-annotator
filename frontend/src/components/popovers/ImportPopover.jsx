@@ -62,6 +62,14 @@ function ImportPopover() {
     rows[next].focus();
   };
 
+  const formatDuration = (frames, fps) => {
+    if (!frames || !fps) return "unknown length";
+    const total = Math.round(frames / fps);
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${m}:${String(s).padStart(2, "0")}`;
+  };
+
   const videos = videoList ?? [];
 
   return (
@@ -229,7 +237,7 @@ function ImportPopover() {
                   </span>
                   <span style={{ color: THEME.label, fontSize: 11 }}>
                     {v.frame_count} frames · {v.bbox_count} bboxes ·{" "}
-                    {Math.round(v.frame_rate)} fps
+                    {formatDuration(v.frame_count, v.frame_rate)}
                   </span>
                   <span style={{ color: THEME.faint, fontSize: 10 }}>
                     Saved:{" "}

@@ -259,15 +259,39 @@ const useStore = create((set, get) => ({
 
   // upload video function
   uploadVideo: async (file) => {
+    if (!file) return;
     const { quality, loadSession } = get();
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("quality", QUALITY_PRESETS[quality]);
 
-    const res = await axios.post(
-      "http://localhost:8000/upload-video",
-      formData,
-    );
+    // filenames are a bad unique key here - every sortie exports video.avi - so
+    // ask for a sequence name and keep asking until the backend accepts it
+    let prompt = "Name this sequence.";
+    let suggestion = file.name.replace(/\.[^./\\]+$/, "");
+    let res = null;
+
+    while (res === null) {
+      const input = window.prompt(prompt, suggestion);
+      if (input === null) return; // cancelled
+      suggestion = input.trim();
+
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("quality", QUALITY_PRESETS[quality]);
+      formData.append("sequence_name", suggestion);
+
+      try {
+        res = await axios.post("http://localhost:8000/upload-video", formData);
+      } catch (err) {
+        const status = err.response?.status;
+        const detail = err.response?.data?.detail;
+        if (status === 409 || status === 400) {
+          prompt = `${detail}\n\nPick another name:`; // retry, the name is recoverable
+          continue;
+        }
+        alert("Upload failed: " + (detail ?? err.message));
+        return;
+      }
+    }
+
     set({
       videoName: res.data.video_name,
       frameCount: res.data.frame_count,
@@ -368,47 +392,68 @@ const useStore = create((set, get) => ({
   loadFrameFolder: async (folderPath) => {
     if (!folderPath) return;
     const { loadSession } = get();
-    try {
-      const res = await axios.post(
-        "http://localhost:8000/load-frames-from-path",
-        {
+
+    // folder basenames collide the same way filenames do, so ask for a name
+    let prompt = "Name this sequence.";
+    let suggestion = folderPath
+      .replace(/[\\/]+$/, "")
+      .split(/[\\/]/)
+      .pop();
+    let res = null;
+
+    while (res === null) {
+      const input = window.prompt(prompt, suggestion);
+      if (input === null) return;
+      suggestion = input.trim();
+
+      try {
+        res = await axios.post("http://localhost:8000/load-frames-from-path", {
           folder_path: folderPath,
-        },
-      );
-      if (res.data.error) {
-        alert(res.data.error);
+          sequence_name: suggestion,
+        });
+      } catch (err) {
+        const status = err.response?.status;
+        const detail = err.response?.data?.detail;
+        if (status === 409 || status === 400) {
+          prompt = `${detail}\n\nPick another name:`;
+          continue;
+        }
+        alert("Failed to load folder: " + (detail ?? err.message));
         return;
       }
-      set({
-        videoName: res.data.video_name,
-        frameCount: res.data.frame_count,
-        fps: res.data.frame_rate,
-        currentFrame: 0,
-        bboxesByFrame: {},
-        outliers: [],
-        embeddingStatus: "idle", // new video, old embedding cache no longer valid
-      });
-      const session = await loadSession(res.data.video_name);
-      if (session) {
-        const resume = window.confirm(
-          `Resume previous session?\nLast saved: ${new Date(session.savedAt).toLocaleString()}`,
+    }
+
+    if (res.data.error) {
+      alert(res.data.error);
+      return;
+    }
+    set({
+      videoName: res.data.video_name,
+      frameCount: res.data.frame_count,
+      fps: res.data.frame_rate,
+      currentFrame: 0,
+      bboxesByFrame: {},
+      outliers: [],
+      embeddingStatus: "idle",
+    });
+    const session = await loadSession(res.data.video_name);
+    if (session) {
+      const resume = window.confirm(
+        `Resume previous session?\nLast saved: ${new Date(session.savedAt).toLocaleString()}`,
+      );
+      if (resume) {
+        set({
+          bboxesByFrame: get().migrateSession(session),
+          classes: session.classes,
+          classColors: session.classColors ?? {},
+        });
+        // restore embedding status if cache already exists for this video
+        const embRes = await fetch(
+          `http://localhost:8000/embeddings-status/${res.data.video_name}`,
         );
-        if (resume) {
-          set({
-            bboxesByFrame: get().migrateSession(session),
-            classes: session.classes,
-            classColors: session.classColors ?? {},
-          });
-          // restore embedding status if cache already exists for this video
-          const embRes = await fetch(
-            `http://localhost:8000/embeddings-status/${res.data.video_name}`,
-          );
-          const embData = await embRes.json();
-          if (embData.status === "ready") set({ embeddingStatus: "ready" });
-        }
+        const embData = await embRes.json();
+        if (embData.status === "ready") set({ embeddingStatus: "ready" });
       }
-    } catch (err) {
-      alert("Failed to load folder: " + err.message);
     }
   },
 
