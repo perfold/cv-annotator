@@ -63,12 +63,22 @@ function AnnotationCanvas({
     return () => observer.disconnect();
   }, []);
 
-  // cancel bbox drawing using Esc
+  // cancel bbox drawing using Esc, zoom out using 0
   useEffect(() => {
     const handleEsc = (e) => {
       if (e.key === "Escape") {
         setDrawStart(null);
         setDrawCurrent(null);
+      }
+      if (e.key === "0" && !e.ctrlKey && !e.metaKey) {
+        const t = e.target;
+        const typing =
+          t &&
+          (t.tagName === "INPUT" ||
+            t.tagName === "TEXTAREA" ||
+            t.isContentEditable);
+        if (typing) return;
+        resetView();
       }
     };
     window.addEventListener("keydown", handleEsc);
@@ -137,6 +147,17 @@ function AnnotationCanvas({
       x: (pos.x - stage.x()) / zoom / scale,
       y: (pos.y - stage.y()) / zoom / scale,
     };
+  };
+
+  const resetView = () => {
+    setStageScale(1);
+    setStagePos({ x: 0, y: 0 });
+    const stage = stageRef.current;
+    if (stage) {
+      stage.scale({ x: 1, y: 1 });
+      stage.position({ x: 0, y: 0 });
+      stage.batchDraw();
+    }
   };
 
   const rectFromPoints = (a, b) => ({
@@ -264,8 +285,6 @@ function AnnotationCanvas({
   const handleDblClick = (e) => {
     if (mode === "select") {
       setResizingId(null);
-      setStageScale(1); // zooms back to original scale if you double click
-      setStagePos({ x: 0, y: 0 });
       return;
     }
     if (!isDrawing || !drawCurrent) return;
@@ -289,15 +308,15 @@ function AnnotationCanvas({
     const clampedScale = Math.min(Math.max(newScale, 1), 10);
 
     if (clampedScale === 1) {
-      setStageScale(1);
-      setStagePos({ x: 0, y: 0 });
+      resetView();
       return;
     }
 
     const mousePointTo = {
-      x: (pointer.x - stagePos.x) / stageScale,
-      y: (pointer.y - stagePos.y) / stageScale,
+      x: (pointer.x - stage.x()) / stage.scaleX(),
+      y: (pointer.y - stage.y()) / stage.scaleX(),
     };
+
     setStagePos({
       x: pointer.x - mousePointTo.x * clampedScale,
       y: pointer.y - mousePointTo.y * clampedScale,

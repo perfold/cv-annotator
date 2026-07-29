@@ -224,6 +224,7 @@ Every header label is a shortcut. Keys are single presses (no modifier) unless n
 | S                  | Scan for outliers                 |
 | R                  | Remove all outliers               |
 | D                  | Remove all FA                     |
+| 0                  | Zoom out                          |
 | Esc                | Cancel bbox drawing/close popover |
 | Arrow Left/Right   | Previous/next frame               |
 | , / .              | Jump back/forward by N frames     |
