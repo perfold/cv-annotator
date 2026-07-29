@@ -70,7 +70,7 @@ function TagsPanel() {
               <span
                 style={{
                   background: THEME.accent,
-                  color: THEME.accentText,
+                  color: THEME.text,
                   borderRadius: 3,
                   padding: "1px 5px",
                   fontSize: 11,

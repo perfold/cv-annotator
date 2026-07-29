@@ -582,6 +582,48 @@ const useStore = create((set, get) => ({
     });
   },
 
+  // rename a class everywhere it appears
+  renameClass: (oldName, newName) => {
+    const { classes, classColors, activeClass, bboxesByFrame, pushHistory } =
+      get();
+    const trimmed = (newName ?? "").trim();
+    const FA_CLASS = "false-alarm";
+
+    if (!trimmed || trimmed === oldName) return;
+    if (oldName === FA_CLASS || trimmed === FA_CLASS) {
+      alert(`"${FA_CLASS}" is reserved for false alarms and can't be renamed.`);
+      return;
+    }
+    if (classes.includes(trimmed)) {
+      // dont allow merging of 2 classes
+      alert(`"${trimmed}" already exists. Delete or rename that one first.`);
+      return;
+    }
+
+    pushHistory();
+
+    const nextColors = { ...classColors };
+    nextColors[trimmed] =
+      nextColors[oldName] ?? PALETTE[classes.length % PALETTE.length];
+    delete nextColors[oldName];
+
+    const nextBoxes = {};
+    for (const [frame, boxes] of Object.entries(bboxesByFrame)) {
+      nextBoxes[frame] = boxes.some((b) => b.className === oldName)
+        ? boxes.map((b) =>
+            b.className === oldName ? { ...b, className: trimmed } : b,
+          )
+        : boxes;
+    }
+
+    set({
+      classes: classes.map((c) => (c === oldName ? trimmed : c)),
+      classColors: nextColors,
+      activeClass: activeClass === oldName ? trimmed : activeClass,
+      bboxesByFrame: nextBoxes,
+    });
+  },
+
   deleteClass: (className) => {
     const { classes, classColors, activeClass, pushHistory } = get();
     pushHistory();

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import useStore from "../../store";
 import { THEME } from "../../constants";
 
@@ -9,7 +10,21 @@ function ClassesPanel() {
     classColors,
     addClass,
     deleteClass,
+    renameClass,
   } = useStore((s) => s);
+
+  const [editing, setEditing] = useState(null);
+  const [draft, setDraft] = useState("");
+
+  const startEdit = (className) => {
+    setEditing(className);
+    setDraft(className);
+  };
+
+  const commitEdit = () => {
+    if (editing !== null) renameClass(editing, draft);
+    setEditing(null);
+  };
 
   return (
     <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
@@ -69,7 +84,31 @@ function ClassesPanel() {
                 cursor: "pointer",
               }}
             />
-            {className}
+            {editing === className ? (
+              <input
+                type="text"
+                autoFocus
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onClick={(e) => e.stopPropagation()} // don't reselect the class underneath
+                onBlur={commitEdit}
+                onKeyDown={(e) => {
+                  e.stopPropagation(); // otherwise every letter fires a global hotkey
+                  if (e.key === "Enter") commitEdit();
+                  if (e.key === "Escape") setEditing(null);
+                }}
+                style={{ flex: 1, minWidth: 0, boxSizing: "border-box" }}
+              />
+            ) : (
+              <span // double click to rename
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  startEdit(className);
+                }}
+              >
+                {className}
+              </span>
+            )}
             <button
               onClick={(e) => {
                 e.stopPropagation();

@@ -1,5 +1,7 @@
 import useStore from "../../store";
-import { OUTLIER_COLOR, THEME } from "../../constants";
+import { OUTLIER_COLOR, FA_COLOR, THEME } from "../../constants";
+
+const FA_CLASS = "false-alarm";
 
 function AnnotationsPanel() {
   const {
@@ -16,6 +18,32 @@ function AnnotationsPanel() {
   } = useStore((s) => s);
 
   const frameBboxes = bboxesByFrame[currentFrame] ?? [];
+
+  const rowStyle = (b) => {
+    const isSelected = selectedBboxIds.includes(b.id);
+    const flag =
+      b.className === FA_CLASS
+        ? FA_COLOR
+        : outliers.some((o) => o.bbox_id === b.id)
+          ? OUTLIER_COLOR
+          : null;
+
+    return {
+      cursor: "pointer",
+      background: flag
+        ? `${flag}${isSelected ? "55" : "22"}`
+        : isSelected
+          ? THEME.hover
+          : "transparent",
+      border: flag
+        ? `1px solid ${flag}`
+        : isSelected
+          ? `1px solid ${THEME.faint}`
+          : "1px solid transparent",
+      borderRadius: 3,
+      marginBottom: 2,
+    };
+  };
 
   return (
     <>
@@ -34,23 +62,7 @@ function AnnotationsPanel() {
                   e.preventDefault();
                   openContextMenu(e.clientX, e.clientY, b.id);
                 }}
-                style={{
-                  cursor: "pointer",
-                  background: selectedBboxIds.includes(b.id)
-                    ? outliers.some((o) => o.bbox_id === b.id)
-                      ? `${OUTLIER_COLOR}55`
-                      : THEME.hover
-                    : outliers.some((o) => o.bbox_id === b.id)
-                      ? `${OUTLIER_COLOR}22`
-                      : "transparent",
-                  border: outliers.some((o) => o.bbox_id === b.id)
-                    ? `1px solid ${OUTLIER_COLOR}`
-                    : selectedBboxIds.includes(b.id)
-                      ? `1px solid ${THEME.faint}`
-                      : "1px solid transparent",
-                  borderRadius: 3,
-                  marginBottom: 2,
-                }}
+                style={rowStyle(b)}
               >
                 {i + 1}. {b.className}{" "}
                 {b.trackId !== null && b.trackId !== undefined && (
@@ -79,7 +91,7 @@ function AnnotationsPanel() {
                     title={`remove ${tag}`}
                     style={{
                       background: THEME.accent,
-                      color: THEME.accentText,
+                      color: THEME.text,
                       borderRadius: 3,
                       padding: "1px 5px",
                       fontSize: 10,
