@@ -160,6 +160,31 @@ function AnnotationCanvas({
     }
   };
 
+  // image space bounds, used to clip boxes drawn past the frame edge
+  const imgW = displayImage ? displayImage.naturalWidth : 0;
+  const imgH = displayImage ? displayImage.naturalHeight : 0;
+
+  const pointerFromClient = (clientX, clientY) => {
+    const stage = stageRef.current;
+    if (!stage) return null;
+    const box = stage.container().getBoundingClientRect();
+    const zoom = stage.scaleX();
+    return {
+      x: (clientX - box.left - stage.x()) / zoom / scale,
+      y: (clientY - box.top - stage.y()) / zoom / scale,
+    };
+  };
+
+  // clip bbox to frame extent
+  const clampRectToFrame = (r) => {
+    if (!imgW || !imgH) return r;
+    const x1 = Math.max(0, Math.min(r.x, imgW));
+    const y1 = Math.max(0, Math.min(r.y, imgH));
+    const x2 = Math.max(0, Math.min(r.x + r.width, imgW));
+    const y2 = Math.max(0, Math.min(r.y + r.height, imgH));
+    return { x: x1, y: y1, width: x2 - x1, height: y2 - y1 };
+  };
+
   const rectFromPoints = (a, b) => ({
     x: Math.min(a.x, b.x),
     y: Math.min(a.y, b.y),
@@ -282,13 +307,9 @@ function AnnotationCanvas({
     rubberBandStartRef.current = null;
   };
 
-  const handleDblClick = (e) => {
-    if (mode === "select") {
-      setResizingId(null);
-      return;
-    }
-    if (!isDrawing || !drawCurrent) return;
-    const rect = rectFromPoints(drawStart, drawCurrent);
+  const finishDrawing = (endPos) => {
+    if (!drawStart || !endPos) return;
+    const rect = clampRectToFrame(rectFromPoints(drawStart, endPos));
 
     if (rect.width > 5 && rect.height > 5) {
       addBbox({ id: crypto.randomUUID(), className: activeClass, ...rect });
@@ -296,6 +317,44 @@ function AnnotationCanvas({
 
     setDrawStart(null);
     setDrawCurrent(null);
+  };
+
+  // track cursor at the window level so the box can be dragged past the frame edge when drawing bbox
+  useEffect(() => {
+    if (!isDrawing) return;
+
+    const onMove = (e) => {
+      const pos = pointerFromClient(e.clientX, e.clientY);
+      if (pos) setDrawCurrent(pos);
+    };
+    const onDbl = (e) => {
+      const stage = stageRef.current;
+      if (!stage) return;
+      const box = stage.container().getBoundingClientRect();
+      const inside =
+        e.clientX >= box.left &&
+        e.clientX <= box.right &&
+        e.clientY >= box.top &&
+        e.clientY <= box.bottom;
+      if (inside) return;
+      finishDrawing(pointerFromClient(e.clientX, e.clientY));
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("dblclick", onDbl);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("dblclick", onDbl);
+    };
+  }, [isDrawing, drawStart, scale, activeClass, imgW, imgH]);
+
+  const handleDblClick = (e) => {
+    if (mode === "select") {
+      setResizingId(null);
+      return;
+    }
+    if (!isDrawing || !drawCurrent) return;
+    finishDrawing(drawCurrent);
   };
 
   const handleWheel = (e) => {
