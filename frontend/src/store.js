@@ -10,6 +10,8 @@ const useStore = create((set, get) => ({
   fps: 30,
   isPlaying: false,
   frameInterval: 10, // user definable keyframe interval, 10 is default
+  videoList: [],
+  isLoadingVideos: false,
 
   // export stats states
   showStatsModal: false,
@@ -295,6 +297,70 @@ const useStore = create((set, get) => ({
         const embData = await embRes.json();
         if (embData.status === "ready") set({ embeddingStatus: "ready" });
       }
+    }
+  },
+
+  // list every extracted video, for the video switcher dropdown
+  listVideos: async () => {
+    set({ isLoadingVideos: true });
+    try {
+      const res = await axios.get("http://localhost:8000/videos");
+      set({ videoList: res.data });
+      return res.data;
+    } catch (err) {
+      alert("Failed to list videos: " + err.message);
+      return [];
+    } finally {
+      set({ isLoadingVideos: false });
+    }
+  },
+
+  // switch to an already extracted video
+  openVideo: async (name) => {
+    if (!name) return;
+    const { loadSession, videoName, saveSession, videoList } = get();
+    if (name === videoName) return;
+
+    if (videoName) {
+      try {
+        await saveSession(); // don't drop unsaved boxes on the video we're leaving
+      } catch (err) {
+        const leave = window.confirm(
+          `Could not save the current video (${err.message}). Switch anyway and lose unsaved changes?`,
+        );
+        if (!leave) return;
+      }
+    }
+
+    const meta = (videoList ?? []).find((v) => v.video_name === name);
+    set({
+      videoName: name,
+      frameCount: meta?.frame_count ?? 0,
+      fps: meta?.frame_rate ?? 30,
+      currentFrame: 0,
+      isPlaying: false,
+      bboxesByFrame: {},
+      classes: [],
+      classColors: {},
+      activeClass: null,
+      selectedBboxIds: [],
+      outliers: [],
+      embeddingStatus: "idle",
+    });
+
+    const session = await loadSession(name);
+    if (session) {
+      set({
+        bboxesByFrame: get().migrateSession(session),
+        classes: session.classes,
+        classColors: session.classColors ?? {},
+      });
+      // restore embedding status if cache already exists for this video
+      const embRes = await fetch(
+        `http://localhost:8000/embeddings-status/${name}`,
+      );
+      const embData = await embRes.json();
+      if (embData.status === "ready") set({ embeddingStatus: "ready" });
     }
   },
 

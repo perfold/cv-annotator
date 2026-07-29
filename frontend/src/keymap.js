@@ -27,6 +27,7 @@ const HEADER_GROUPS = [
 const POPOVER_KEYS = {
   import: [
     { key: "u", label: "upload video", action: "import:upload" },
+    { key: "v", label: "switch video", action: "import:videos" },
     { key: "x", label: "import xml", action: "import:xml" },
     { key: "p", label: "focus path", action: "import:path" },
     { key: "1", label: "low", action: "import:quality:low" },

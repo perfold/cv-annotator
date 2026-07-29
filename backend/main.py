@@ -168,10 +168,14 @@ def get_fps(video_path: str) -> float:
     return num / den
 
 # save extraction quality into a .json in output folder
-def save_extraction_metadata(output_folder: str, quality: int):
+def save_extraction_metadata(output_folder: str, quality: int, fps: float | None = None):
     path = Path(output_folder) / EXTRACTION_METADATA_FILE
+    meta = get_extraction_metadata(output_folder)
+    meta["quality"] = quality
+    if fps is not None:
+        meta["fps"] = fps
     with open(path, "w") as f:
-        json.dump({"quality": quality}, f)
+        json.dump(meta, f)
 
 # get extracted frames' quality
 def get_extraction_metadata(output_folder: str) -> dict:
@@ -188,7 +192,7 @@ def frames_already_extracted(output_folder: str) -> bool:
     return any(Path(output_folder).glob("*.jpg"))
 
 # uses FFmpeg to extract video frames, returns num of frames
-def extract_frames(video_path: str, output_folder: str, quality:int) -> int:
+def extract_frames(video_path: str, output_folder: str, quality:int, fps: float | None = None) -> int:
     Path(output_folder).mkdir(parents=True, exist_ok=True)
     subprocess.run(
         [
@@ -199,7 +203,7 @@ def extract_frames(video_path: str, output_folder: str, quality:int) -> int:
         check=True,
         capture_output=True,
     )
-    save_extraction_metadata(output_folder, quality)
+    save_extraction_metadata(output_folder, quality, fps)
     return len(list(Path(output_folder).glob("*.jpg")))
 
 @app.post("/upload-video")
@@ -225,11 +229,12 @@ async def upload_video(file: UploadFile = File(...), quality: int = Form(default
 
     if already_extracted and not quality_changed:
         frame_count = len(list(Path(output_folder).glob("*.jpg")))
+        save_extraction_metadata(output_folder, quality, fps) # backfill fps for videos extracted before /videos existed
     else:
         if already_extracted: # wipe stale frames before re-extracting
             for f in Path(output_folder).glob("*.jpg"):
                 f.unlink()
-        frame_count = extract_frames(video_path, output_folder, quality)
+        frame_count = extract_frames(video_path, output_folder, quality, fps)
 
     return {
         "video_name": video_name,
@@ -892,6 +897,41 @@ def compute_stats(video_name: str, bboxes_by_frame: dict) -> list[dict]:
         })
 
     return rows
+
+# list every uploaded video
+@app.get("/videos")
+def list_videos():
+    videos = []
+    if not OUTPUT_DIR.is_dir():
+        return videos
+    for video_dir in OUTPUT_DIR.iterdir():
+        if not video_dir.is_dir():
+            continue
+        frame_count = len(list(video_dir.glob("*.jpg")))
+        if frame_count == 0:
+            continue
+        meta = get_extraction_metadata(str(video_dir))
+        ann_path = video_dir / "annotations.json"
+        bbox_count = 0
+        saved_at = None
+        if ann_path.exists():
+            try:
+                with open(ann_path) as f:
+                    data = json.load(f)
+                bboxes_by_frame = data.get("bboxesByFrame", {})
+                bbox_count = sum(len(v) for v in bboxes_by_frame.values())
+                saved_at = data.get("savedAt")
+            except (json.JSONDecodeError, OSError):
+                pass 
+        videos.append({
+            "video_name":  video_dir.name,
+            "frame_count": frame_count,
+            "frame_rate":  meta.get("fps", 30),
+            "bbox_count":  bbox_count,
+            "saved_at":    saved_at,
+        })
+    return sorted(videos, key=lambda v: v["video_name"])
+
 
 # list all uploaded videos with annotations.json, to let user pick which project to export stats for
 @app.get("/projects")
