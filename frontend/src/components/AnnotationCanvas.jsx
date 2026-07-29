@@ -326,6 +326,7 @@ function AnnotationCanvas({
 
   const preview =
     isDrawing && drawCurrent ? rectFromPoints(drawStart, drawCurrent) : null;
+  const invZoom = 1 / (scale * stageScale); // scaling factor to keep object the same size even if you zoom in
 
   return (
     <div
@@ -513,7 +514,8 @@ function AnnotationCanvas({
                         stroke={
                           outlierBboxIds?.includes(b.id) ? outlierColor : color
                         }
-                        strokeWidth={isSelected ? 8 : 2} // thickens line when box is highlighted
+                        strokeWidth={isSelected ? 4 : 2} // thickens line when box is highlighted
+                        strokeScaleEnabled={false}
                         fill={
                           (outlierBboxIds?.includes(b.id)
                             ? outlierColor
@@ -529,7 +531,8 @@ function AnnotationCanvas({
                         stroke={
                           outlierBboxIds?.includes(b.id) ? outlierColor : color
                         }
-                        strokeWidth={isSelected ? 8 : 2}
+                        strokeWidth={isSelected ? 4 : 2}
+                        strokeScaleEnabled={false}
                         fill={
                           (outlierBboxIds?.includes(b.id)
                             ? outlierColor
@@ -548,6 +551,7 @@ function AnnotationCanvas({
                               : color
                           }
                           strokeWidth={2}
+                          strokeScaleEnabled={false}
                           listening={false}
                         />
                         <Line
@@ -558,6 +562,7 @@ function AnnotationCanvas({
                               : color
                           }
                           strokeWidth={2}
+                          strokeScaleEnabled={false}
                           listening={false}
                         />
                       </>
@@ -565,9 +570,9 @@ function AnnotationCanvas({
                     {/* class tag above bbox */}
                     <Label
                       x={0}
-                      y={-20 / scale}
-                      scaleX={1 / scale}
-                      scaleY={1 / scale}
+                      y={-20 * invZoom}
+                      scaleX={invZoom}
+                      scaleY={invZoom}
                     >
                       <Tag fill="white" />
                       <Text
@@ -589,6 +594,10 @@ function AnnotationCanvas({
               ref={transformerRef}
               rotateEnabled={false}
               keepRatio={false}
+              anchorSize={8 / stageScale}
+              anchorStrokeWidth={1 / stageScale}
+              borderStrokeWidth={1 / stageScale}
+              ignoreStroke
               onTransformEnd={() => {
                 if (!resizingId) return;
                 const node = nodeRefs.current[resizingId];
@@ -626,6 +635,7 @@ function AnnotationCanvas({
                 height={preview.height * scale}
                 stroke="#ffffff"
                 strokeWidth={1}
+                strokeScaleEnabled={false}
                 dash={[6, 3]}
                 fill="rgba(255,255,255,0.08)"
                 listening={false}
@@ -639,6 +649,7 @@ function AnnotationCanvas({
                 height={Math.abs(rubberBand.y2 - rubberBand.y1) * scale}
                 stroke={THEME.border}
                 strokeWidth={1}
+                strokeScaleEnabled={false}
                 dash={[4, 4]}
                 fill="rgba(64,170,255,0.08)"
                 listening={false}
