@@ -134,8 +134,8 @@ function AnnotationCanvas({
     const zoom = stage.scaleX();
     // boxes are stored in image space
     return {
-      x: (pos.x - stagePos.x) / zoom / scale,
-      y: (pos.y - stagePos.y) / zoom / scale,
+      x: (pos.x - stage.x()) / zoom / scale,
+      y: (pos.y - stage.y()) / zoom / scale,
     };
   };
 
@@ -235,6 +235,8 @@ function AnnotationCanvas({
     if (isPanningRef.current) {
       isPanningRef.current = false;
       justPannedRef.current = true; // to prevent drawing of bbox when release pan
+      const stage = stageRef.current;
+      if (stage) setStagePos({ x: stage.x(), y: stage.y() });
       return;
     }
 
