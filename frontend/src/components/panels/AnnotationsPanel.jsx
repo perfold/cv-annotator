@@ -70,6 +70,11 @@ function AnnotationsPanel() {
                     {`#${b.trackId}`}
                   </span>
                 )}
+                <span
+                  style={{ color: THEME.faint, fontSize: 10, marginLeft: 4 }}
+                >
+                  {`${Math.round(b.width)}\u00d7${Math.round(b.height)}`}
+                </span>
                 {outliers.some((o) => o.bbox_id === b.id) && (
                   <span
                     style={{
