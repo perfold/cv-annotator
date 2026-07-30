@@ -2,6 +2,8 @@ from fastapi import FastAPI, File, UploadFile, Body, Form, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import os
+import re
+import shutil
 import json
 import subprocess
 import sys
@@ -148,6 +150,21 @@ app.add_middleware(
 
 EXTRACTION_METADATA_FILE = "extraction_metadata.json" # stores jpeg_quality variable
 
+FRAME_EXTS = {".jpg", ".jpeg", ".png"}
+
+# sort frames so theyre always in order
+def _frame_sort_key(path: Path):
+    parts = re.split(r"(\d+)", path.name)
+    return [int(part) if part.isdigit() else part for part in parts]
+
+# returns every frame in a sequence folder
+def list_frames(folder) -> list[Path]:
+    folder = Path(folder)
+    if not folder.is_dir():
+        return []
+    frames = [f for f in folder.iterdir() if f.suffix.lower() in FRAME_EXTS] 
+    return sorted(frames, key=_frame_sort_key)
+
 # get frame rate of video using FFmpeg
 def get_fps(video_path: str) -> float:
     result = subprocess.run( 
@@ -239,7 +256,7 @@ def sequence_taken(output_folder: str) -> bool:
     folder = Path(output_folder)
     if not folder.is_dir():
         return False
-    return any(folder.glob("*.jpg")) or (folder / "annotations.json").exists()
+    return bool(list_frames(folder)) or (folder / "annotations.json").exists()
 
 @app.post("/upload-video")
 
@@ -301,8 +318,7 @@ async def load_frames_from_path(payload: dict = Body(...)):
     if not folder_path.exists() or not folder_path.is_dir():
         return {"error": f"Folder not found: {folder_path}"}
     
-    image_exts = {".jpg", ".jpeg", ".png"}
-    frames = sorted([f for f in folder_path.iterdir() if f.suffix.lower() in image_exts])
+    frames = list_frames(folder_path)
     
     if not frames:
         return {"error": "No image files found in folder"}
@@ -325,7 +341,10 @@ async def load_frames_from_path(payload: dict = Body(...)):
     for frame in frames:
         dest = output_folder / frame.name
         if not dest.exists():
-            dest.symlink_to(frame.resolve())
+            try:
+                dest.symlink_to(frame.resolve())
+            except OSError: 
+                shutil.copy2(frame, dest)
 
     return {
         "video_name": folder_name,
@@ -353,7 +372,7 @@ async def reextract_frames(video_name: str, payload: dict = Body(...)):
 @app.get("/frame/{video_name}/{frame_idx}")
 def get_frame(video_name: str, frame_idx: int):
     folder = OUTPUT_DIR / video_name
-    frames = sorted(folder.glob("*.jpg"))
+    frames = list_frames(folder)
     if frame_idx >= len(frames):
         return {"error": "Frame index out of range"}
     return FileResponse(frames[frame_idx])
@@ -396,7 +415,7 @@ async def run_yolo(video_name: str, payload: dict = Body(...)):
         raw_cache  = {}   # frame_idx -> list of dets at conf=0.01
 
         # build filename -> sorted index mapping so frame_idx is consistent with get_frame
-        all_frames = sorted(frames_dir.glob("*.jpg"))
+        all_frames = list_frames(frames_dir)
         filename_to_idx = {f.name: i for i, f in enumerate(all_frames)}
 
         for path, img, im0, _ in dataset:
@@ -502,7 +521,7 @@ async def track_reid(video_name: str, payload: dict = Body(...)):
 @app.post("/propagate/{video_name}")
 async def propagate_box(video_name: str, payload: dict = Body(...)):
     frames_dir = OUTPUT_DIR / video_name
-    frame_files = sorted(frames_dir.glob("*.jpg"))
+    frame_files = list_frames(frames_dir)
     n_frames = len(frame_files)
 
     # seed box in ORIGINAL pixel space 
@@ -621,7 +640,7 @@ def _iou(a, b):
 @app.post("/sam-polygon-tighten/{video_name}")
 async def sam_polygon_tighten(video_name: str, payload: dict = Body(...)):
     frames_dir = OUTPUT_DIR / video_name
-    frame_files = sorted(frames_dir.glob("*.jpg"))
+    frame_files = list_frames(frames_dir)
     n_frames = len(frame_files)
  
     frame_idx = int(payload["frame_idx"])
@@ -709,7 +728,7 @@ async def sam_polygon_tighten(video_name: str, payload: dict = Body(...)):
 @app.post("/sam-box-tighten/{video_name}")
 async def sam_box_tighten(video_name: str, payload: dict = Body(...)):
     frames_dir = OUTPUT_DIR / video_name
-    frame_files = sorted(frames_dir.glob("*.jpg"))
+    frame_files = list_frames(frames_dir)
     n_frames = len(frame_files)
 
     frame_idx = int(payload["frame_idx"])
@@ -805,7 +824,7 @@ async def sam_box_tighten(video_name: str, payload: dict = Body(...)):
 @app.post("/mark-fa-track/{video_name}")
 async def mark_fa_track(video_name: str, payload: dict = Body(...)):
     frames_dir = OUTPUT_DIR / video_name
-    frame_files = sorted(frames_dir.glob("*.jpg"))
+    frame_files = list_frames(frames_dir)
     n_frames = len(frame_files)
 
     # seed box in ORIGINAL pixel space
@@ -968,7 +987,7 @@ def list_videos():
     for video_dir in OUTPUT_DIR.iterdir():
         if not video_dir.is_dir():
             continue
-        frame_count = len(list(video_dir.glob("*.jpg")))
+        frame_count = len(list_frames(video_dir))
         if frame_count == 0:
             continue
         meta = get_extraction_metadata(str(video_dir))
@@ -1095,11 +1114,13 @@ async def export_chips(payload: dict = Body(...)):
             skipped += 1
             continue
 
+        frames = list_frames(OUTPUT_DIR / video_name)
+
         for frame_idx_str, bboxes in bboxes_by_frame.items():
             frame_idx = int(frame_idx_str)
-            frame_path = OUTPUT_DIR / video_name / f"{frame_idx + 1:07d}.jpg"
-            if not frame_path.exists():
+            if frame_idx < 0 or frame_idx >= len(frames):
                 continue
+            frame_path = frames[frame_idx]
 
             img = Image.open(frame_path)
 
@@ -1172,11 +1193,13 @@ async def compute_embeddings(video_name: str, payload: dict = Body(...)):
 
     # collect all (frame_path, bbox_id, crop_box) tuples upfront on the main thread
     crops = [] # list of (frame_path, bbox_id, (left, top, right, bottom))
+    frames = list_frames(OUTPUT_DIR / video_name) 
+
     for frame_idx_str, bboxes in bboxes_by_frame.items():
         frame_idx = int(frame_idx_str)
-        frame_path= OUTPUT_DIR / video_name / f"{frame_idx + 1:07d}.jpg"
-        if not frame_path.exists():
+        if frame_idx < 0 or frame_idx >= len(frames):
             continue
+        frame_path = frames[frame_idx]
         for bbox in bboxes:
             bid = bbox.get("id")
             if not bid:
