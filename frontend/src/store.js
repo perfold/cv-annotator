@@ -6,6 +6,7 @@ const useStore = create((set, get) => ({
   // video states
   videoName: null,
   frameCount: null,
+  frameStart: 1,
   currentFrame: 0,
   fps: 30,
   isPlaying: false,
@@ -295,6 +296,7 @@ const useStore = create((set, get) => ({
     set({
       videoName: res.data.video_name,
       frameCount: res.data.frame_count,
+      frameStart: res.data.frame_start ?? 1,
       fps: res.data.frame_rate,
       currentFrame: 0,
       bboxesByFrame: {},
@@ -360,6 +362,7 @@ const useStore = create((set, get) => ({
     set({
       videoName: name,
       frameCount: meta?.frame_count ?? 0,
+      frameStart: meta?.frame_start ?? 1,
       fps: meta?.frame_rate ?? 30,
       currentFrame: 0,
       isPlaying: false,
@@ -430,6 +433,7 @@ const useStore = create((set, get) => ({
     set({
       videoName: res.data.video_name,
       frameCount: res.data.frame_count,
+      frameStart: res.data.frame_start ?? 1,
       fps: res.data.frame_rate,
       currentFrame: 0,
       bboxesByFrame: {},
