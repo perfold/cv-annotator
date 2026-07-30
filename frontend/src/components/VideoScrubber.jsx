@@ -5,6 +5,7 @@ function VideoScrubber({ formatTime, prevFrame, nextFrame }) {
   const {
     currentFrame,
     frameCount,
+    frameStart,
     frameInterval,
     isPlaying,
     isExtracting,
@@ -41,7 +42,7 @@ function VideoScrubber({ formatTime, prevFrame, nextFrame }) {
         {/* back button */}
         <span>
           {" "}
-          Frame {currentFrame + 1} / {frameCount}{" "}
+          Frame {currentFrame + frameStart} / {frameCount + frameStart - 1}{" "}
         </span>
         <button
           tabIndex={-1}

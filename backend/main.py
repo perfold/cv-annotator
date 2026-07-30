@@ -165,6 +165,14 @@ def list_frames(folder) -> list[Path]:
     frames = [f for f in folder.iterdir() if f.suffix.lower() in FRAME_EXTS] 
     return sorted(frames, key=_frame_sort_key)
 
+# first frames filename number
+def frame_start(folder) -> int:
+    frames = list_frames(folder)
+    if not frames:
+        return 1 
+    digits = re.search(r"\d+", frames[0].stem)
+    return int(digits.group()) if digits else 1 # non-numeric names count from 1
+
 # get frame rate of video using FFmpeg
 def get_fps(video_path: str) -> float:
     result = subprocess.run( 
@@ -308,6 +316,7 @@ async def upload_video(
         "video_name": video_name,
         "frame_count": frame_count,
         "frame_rate": fps,
+        "frame_start": frame_start(output_folder),
     }
 
 # grab frames from frame folder path
@@ -350,6 +359,7 @@ async def load_frames_from_path(payload: dict = Body(...)):
         "video_name": folder_name,
         "frame_count": len(frames),
         "frame_rate": 30,
+        "frame_start": frame_start(output_folder),
     }
 
 # re-extract frame, if quality toggle is changed
@@ -1007,6 +1017,7 @@ def list_videos():
             "video_name":  video_dir.name,
             "frame_count": frame_count,
             "frame_rate":  meta.get("fps", 30),
+            "frame_start": frame_start(video_dir),
             "bbox_count":  bbox_count,
             "saved_at":    saved_at,
         })
