@@ -1,6 +1,7 @@
 import useStore from "../../store";
 import { THEME } from "../../constants";
 import Popover from "../Popover";
+import Tooltip from "../Tooltip";
 import usePopoverKeys from "../../usePopoverKeys";
 
 function ModelsPopover() {
@@ -45,9 +46,11 @@ function ModelsPopover() {
           marginTop: 4,
         }}
       >
-        <label style={{ fontSize: 11, width: 50, flexShrink: 0 }}>
-          Conf: {yoloConf}
-        </label>
+        <Tooltip text="low = more boxes, high = fewer boxes">
+          <label style={{ fontSize: 11, width: 50, flexShrink: 0 }}>
+            Conf: {yoloConf}
+          </label>
+        </Tooltip>
         <input
           type="range"
           min={0.05}
@@ -69,9 +72,11 @@ function ModelsPopover() {
           marginTop: 4,
         }}
       >
-        <label style={{ fontSize: 11, width: 50, flexShrink: 0 }}>
-          Match: {matchThresh}
-        </label>
+        <Tooltip text="higher = stricter match. lower = more lenient">
+          <label style={{ fontSize: 11, width: 50, flexShrink: 0 }}>
+            Match: {matchThresh}
+          </label>
+        </Tooltip>
         <input
           type="range"
           min={0.1}
@@ -94,9 +99,11 @@ function ModelsPopover() {
           marginTop: 4,
         }}
       >
-        <label style={{ fontSize: 11, width: 50, flexShrink: 0 }}>
-          Max lost: {maxLost}f
-        </label>
+        <Tooltip text="higher = keeps ID through long gaps. lower = drops track fast">
+          <label style={{ fontSize: 11, width: 50, flexShrink: 0 }}>
+            Max lost: {maxLost}f
+          </label>
+        </Tooltip>
         <input
           type="range"
           min={60}
@@ -110,54 +117,64 @@ function ModelsPopover() {
         />
       </div>
       {/* run yolo button */}
-      <button
-        style={{ width: "100%" }}
-        tabIndex={-1}
-        disabled={!videoName || isRunningYolo || isExtracting}
-        onClick={runYolo}
-      >
-        {isRunningYolo ? "Running…" : "Run YOLOv7-tiny (Y)"}
-      </button>
+      <Tooltip text="model auto draws every box">
+        <button
+          style={{ width: "100%" }}
+          tabIndex={-1}
+          disabled={!videoName || isRunningYolo || isExtracting}
+          onClick={runYolo}
+        >
+          {isRunningYolo ? "Running…" : "Run YOLOv7-tiny (Y)"}
+        </button>
+      </Tooltip>
       {/* compute embeddings */}
-      <button
-        style={{ width: "100%", marginTop: 4 }}
-        tabIndex={-1}
-        disabled={!videoName || embeddingStatus === "computing"}
-        onClick={() => computeEmbeddings(embeddingStatus === "ready")} // force=true if recomputing
-      >
-        {embeddingStatus === "computing"
-          ? "Computing..."
-          : embeddingStatus === "ready"
-            ? "Recompute Embeddings (E)"
-            : "Compute Embeddings (E)"}
-      </button>
+      <Tooltip text="model memorises each box's look">
+        <button
+          style={{ width: "100%", marginTop: 4 }}
+          tabIndex={-1}
+          disabled={!videoName || embeddingStatus === "computing"}
+          onClick={() => computeEmbeddings(embeddingStatus === "ready")} // force=true if recomputing
+        >
+          {embeddingStatus === "computing"
+            ? "Computing..."
+            : embeddingStatus === "ready"
+              ? "Recompute Embeddings (E)"
+              : "Compute Embeddings (E)"}
+        </button>
+      </Tooltip>
       {/* run bytetrack with visual re-id */}
-      <button
-        style={{ width: "100%", marginTop: 4 }}
-        tabIndex={-1}
-        disabled={!videoName || isRunningYolo || isExtracting}
-        onClick={runTrackingWithReId}
-      >
-        {isRunningYolo ? "Running…" : "Run Tracking + Re-ID (T)"}
-      </button>
+      <Tooltip text="track every object, give ID to each object">
+        <button
+          style={{ width: "100%", marginTop: 4 }}
+          tabIndex={-1}
+          disabled={!videoName || isRunningYolo || isExtracting}
+          onClick={runTrackingWithReId}
+        >
+          {isRunningYolo ? "Running…" : "Run Tracking + Re-ID (T)"}
+        </button>
+      </Tooltip>
       {/* run fastsam to snap every box in this frame to a tightened rect */}
-      <button
-        style={{ width: "100%", marginTop: 4 }}
-        tabIndex={-1}
-        disabled={!videoName || isBoxTightening}
-        onClick={() => samBoxTighten()}
-      >
-        {isBoxTightening ? "Tightening…" : "Run FastSAM Tighten Boxes (B)"}
-      </button>
+      <Tooltip text="loose boxes snap tight to edges">
+        <button
+          style={{ width: "100%", marginTop: 4 }}
+          tabIndex={-1}
+          disabled={!videoName || isBoxTightening}
+          onClick={() => samBoxTighten()}
+        >
+          {isBoxTightening ? "Tightening…" : "Run FastSAM Tighten Boxes (B)"}
+        </button>
+      </Tooltip>
       {/* run fastsam to snap every box in this frame into a polygon */}
-      <button
-        style={{ width: "100%", marginTop: 4 }}
-        tabIndex={-1}
-        disabled={!videoName || isPolygonTightening}
-        onClick={() => samPolygonTighten()}
-      >
-        {isPolygonTightening ? "Tightening…" : "Run FastSAM Polygon (P)"}
-      </button>
+      <Tooltip text="box becomes exact outline">
+        <button
+          style={{ width: "100%", marginTop: 4 }}
+          tabIndex={-1}
+          disabled={!videoName || isPolygonTightening}
+          onClick={() => samPolygonTighten()}
+        >
+          {isPolygonTightening ? "Tightening…" : "Run FastSAM Polygon (P)"}
+        </button>
+      </Tooltip>
     </Popover>
   );
 }

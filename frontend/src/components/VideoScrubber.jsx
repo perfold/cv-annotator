@@ -1,5 +1,6 @@
 import { THEME } from "../constants";
 import useStore from "../store";
+import Tooltip from "./Tooltip";
 
 function VideoScrubber({ formatTime, prevFrame, nextFrame }) {
   const {
@@ -70,7 +71,9 @@ function VideoScrubber({ formatTime, prevFrame, nextFrame }) {
       </div>
       <div>
         {/* frame interval setter */}
-        <label>Interval: </label>
+        <Tooltip text="jumps this many frames per click">
+          <label>Interval: </label>
+        </Tooltip>
         <input
           type="number"
           value={frameInterval}
@@ -112,12 +115,10 @@ function VideoScrubber({ formatTime, prevFrame, nextFrame }) {
                 transform: "translateX(-50%)",
               }}
               title={`${o.timestamp} — ${o.class} (${
-                o.reason === "orientation"
-                  ? "⚠ wrong orientation"
-                  : o.reason === "aspect_ratio"
-                    ? "⚠ unusual shape"
-                    : "⚠ rare class"
-              } — {o.detail})`}
+                o.reason === "rare_class"
+                  ? "⚠ rare class"
+                  : "⚠ visually different"
+              } — ${o.detail})`}
             />
           ))}
           <input

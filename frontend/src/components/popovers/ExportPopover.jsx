@@ -1,6 +1,7 @@
 import useStore from "../../store";
 import { THEME } from "../../constants";
 import Popover from "../Popover";
+import Tooltip from "../Tooltip";
 import usePopoverKeys from "../../usePopoverKeys";
 
 function ExportPopover({ saveSession, lastSavedRef }) {
@@ -29,40 +30,48 @@ function ExportPopover({ saveSession, lastSavedRef }) {
   return (
     <Popover name="export" title="Export">
       {/* export as .xml button */}
-      <button
-        style={{ width: "100%" }}
-        tabIndex={-1}
-        disabled={!videoName}
-        onClick={exportCVATXML}
-      >
-        Export XML (X)
-      </button>
-      <button
-        style={{ width: "100%" }}
-        tabIndex={-1}
-        disabled={!videoName}
-        onClick={openStatsModal}
-      >
-        Export Stats (S)
-      </button>
-      <button
-        style={{ width: "100%" }}
-        tabIndex={-1}
-        disabled={!videoName}
-        onClick={openChipsModal}
-      >
-        Export Chips (C)
-      </button>
+      <Tooltip text="CVAT file format">
+        <button
+          style={{ width: "100%" }}
+          tabIndex={-1}
+          disabled={!videoName}
+          onClick={exportCVATXML}
+        >
+          Export XML (X)
+        </button>
+      </Tooltip>
+      <Tooltip text="CSV of box + class counts">
+        <button
+          style={{ width: "100%" }}
+          tabIndex={-1}
+          disabled={!videoName}
+          onClick={openStatsModal}
+        >
+          Export Stats (S)
+        </button>
+      </Tooltip>
+      <Tooltip text="cropped image of each box">
+        <button
+          style={{ width: "100%" }}
+          tabIndex={-1}
+          disabled={!videoName}
+          onClick={openChipsModal}
+        >
+          Export Chips (C)
+        </button>
+      </Tooltip>
 
       {/* save button */}
-      <button
-        style={{ width: "100%", borderTop: `1px solid ${THEME.divider}` }}
-        tabIndex={-1}
-        disabled={!videoName}
-        onClick={doSave}
-      >
-        Save (V)
-      </button>
+      <Tooltip text="saves your work">
+        <button
+          style={{ width: "100%", borderTop: `1px solid ${THEME.divider}` }}
+          tabIndex={-1}
+          disabled={!videoName}
+          onClick={doSave}
+        >
+          Save (V)
+        </button>
+      </Tooltip>
     </Popover>
   );
 }

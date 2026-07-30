@@ -1,6 +1,7 @@
 import { THEME } from "../constants";
 import useStore from "../store";
 import { HEADER_GROUPS } from "../keymap";
+import Tooltip from "./Tooltip";
 
 function HeaderBar() {
   const { mode, ui, togglePanel, setPopover } = useStore((s) => s);
@@ -65,46 +66,47 @@ function HeaderBar() {
           {group.map((item) => {
             if (item.action === "mode:toggle") {
               return (
-                <button
-                  key={item.id}
-                  tabIndex={-1}
-                  onClick={() => fire(item.action)}
-                  style={{
-                    ...labelStyle(false),
-                    display: "flex",
-                    justifyContent: "center",
-                    alignItems: "stretch",
-                    gap: 0,
-                    padding: 0,
-                  }}
-                >
-                  <span
+                <Tooltip key={item.id} text="draw new boxes/move around">
+                  <button
+                    tabIndex={-1}
+                    onClick={() => fire(item.action)}
                     style={{
-                      flex: 1,
-                      textAlign: "right",
-                      background:
-                        mode === "draw" ? THEME.accent : "transparent",
-                      padding: "2px 6px",
+                      ...labelStyle(false),
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "stretch",
+                      gap: 0,
+                      padding: 0,
                     }}
                   >
-                    draw
-                  </span>
-                  <span style={{ padding: "2px 2px", flexShrink: 0 }}>/</span>
-                  <span
-                    style={{
-                      flex: 1,
-                      textAlign: "left",
-                      background:
-                        mode === "select" ? THEME.accent : "transparent",
-                      padding: "2px 6px",
-                    }}
-                  >
-                    select
-                  </span>
-                  <span style={{ padding: "2px 4px", flexShrink: 0 }}>
-                    ({item.key})
-                  </span>
-                </button>
+                    <span
+                      style={{
+                        flex: 1,
+                        textAlign: "right",
+                        background:
+                          mode === "draw" ? THEME.accent : "transparent",
+                        padding: "2px 6px",
+                      }}
+                    >
+                      draw
+                    </span>
+                    <span style={{ padding: "2px 2px", flexShrink: 0 }}>/</span>
+                    <span
+                      style={{
+                        flex: 1,
+                        textAlign: "left",
+                        background:
+                          mode === "select" ? THEME.accent : "transparent",
+                        padding: "2px 6px",
+                      }}
+                    >
+                      select
+                    </span>
+                    <span style={{ padding: "2px 4px", flexShrink: 0 }}>
+                      ({item.key})
+                    </span>
+                  </button>
+                </Tooltip>
               );
             }
             return (

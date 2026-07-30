@@ -1,5 +1,6 @@
 import useStore from "../../store";
 import { OUTLIER_COLOR, FA_COLOR, THEME } from "../../constants";
+import Tooltip from "../Tooltip";
 
 const FA_CLASS = "false-alarm";
 
@@ -132,28 +133,32 @@ function AnnotationsPanel() {
           paddingTop: 4,
         }}
       >
-        <button
-          style={{
-            flex: 1,
-          }}
-          tabIndex={-1}
-          disabled={!videoName}
-          onClick={() => useStore.setState({ hideAllBboxes: !hideAllBboxes })}
-        >
-          {hideAllBboxes ? "Show all (H)" : "Hide all (H)"}
-        </button>
-        <button
-          style={{
-            flex: 1,
-          }}
-          tabIndex={-1}
-          disabled={!videoName}
-          onClick={() =>
-            useStore.setState({ showOnlyFlagged: !showOnlyFlagged })
-          }
-        >
-          {showOnlyFlagged ? "Only flagged ✓ (L)" : "Only flagged (L)"}
-        </button>
+        <Tooltip text="hide boxes to see image">
+          <button
+            style={{
+              flex: 1,
+            }}
+            tabIndex={-1}
+            disabled={!videoName}
+            onClick={() => useStore.setState({ hideAllBboxes: !hideAllBboxes })}
+          >
+            {hideAllBboxes ? "Show all (H)" : "Hide all (H)"}
+          </button>
+        </Tooltip>
+        <Tooltip text="shows only outlier + FA boxes">
+          <button
+            style={{
+              flex: 1,
+            }}
+            tabIndex={-1}
+            disabled={!videoName}
+            onClick={() =>
+              useStore.setState({ showOnlyFlagged: !showOnlyFlagged })
+            }
+          >
+            {showOnlyFlagged ? "Only flagged ✓ (L)" : "Only flagged (L)"}
+          </button>
+        </Tooltip>
       </div>
     </>
   );

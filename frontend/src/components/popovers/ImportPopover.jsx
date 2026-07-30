@@ -2,6 +2,7 @@ import { useRef, useEffect } from "react";
 import useStore from "../../store";
 import { THEME } from "../../constants";
 import Popover from "../Popover";
+import Tooltip from "../Tooltip";
 import usePopoverKeys from "../../usePopoverKeys";
 
 function ImportPopover() {
@@ -104,28 +105,34 @@ function ImportPopover() {
           </button>
 
           {/* frame folder path input */}
-          <input
-            ref={pathRef}
-            type="text"
-            placeholder="Absolute Path (P)"
-            id="folder-path-input"
-            style={{ width: "100%", boxSizing: "border-box" }}
-            onKeyDown={(e) => {
-              e.stopPropagation();
-              if (e.key === "Enter") loadFrameFolder(e.target.value.trim());
-              if (e.key === "Escape") e.target.blur();
-            }}
-          />
+          <Tooltip text="load a folder of images instead of a video">
+            <input
+              ref={pathRef}
+              type="text"
+              placeholder="Folder Path (P)"
+              id="folder-path-input"
+              style={{ width: "100%", boxSizing: "border-box" }}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === "Enter") loadFrameFolder(e.target.value.trim());
+                if (e.key === "Escape") e.target.blur();
+              }}
+            />
+          </Tooltip>
 
           {/* import .xml file */}
-          <button
-            style={{ width: "100%" }}
-            tabIndex={-1}
-            disabled={!videoName}
-            onClick={() => document.getElementById("import-xml-input").click()}
-          >
-            Import XML (X)
-          </button>
+          <Tooltip text="load boxes from a CVAT file">
+            <button
+              style={{ width: "100%" }}
+              tabIndex={-1}
+              disabled={!videoName}
+              onClick={() =>
+                document.getElementById("import-xml-input").click()
+              }
+            >
+              Import XML (X)
+            </button>
+          </Tooltip>
 
           {/* frame quality toggle */}
           {videoName && (
@@ -140,21 +147,22 @@ function ImportPopover() {
             >
               <h4 style={{ margin: 0, fontSize: 13 }}>Quality</h4>
               {["low", "medium", "high"].map((q, i) => (
-                <button
-                  key={q}
-                  tabIndex={-1}
-                  disabled={isExtracting}
-                  onClick={() => changeQuality(q)}
-                  style={{
-                    flex: 1,
-                    fontWeight: quality === q ? "bold" : "normal",
-                    background: quality === q ? THEME.accent : "",
-                    color: quality === q ? THEME.text : "",
-                    padding: "4px",
-                  }}
-                >
-                  {q.charAt(0).toUpperCase() + q.slice(1)} ({i + 1})
-                </button>
+                <Tooltip key={q} text="change image quality">
+                  <button
+                    tabIndex={-1}
+                    disabled={isExtracting}
+                    onClick={() => changeQuality(q)}
+                    style={{
+                      flex: 1,
+                      fontWeight: quality === q ? "bold" : "normal",
+                      background: quality === q ? THEME.accent : "",
+                      color: quality === q ? THEME.text : "",
+                      padding: "4px",
+                    }}
+                  >
+                    {q.charAt(0).toUpperCase() + q.slice(1)} ({i + 1})
+                  </button>
+                </Tooltip>
               ))}
             </div>
           )}

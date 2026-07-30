@@ -1,6 +1,7 @@
 import { useRef, useState, useLayoutEffect } from "react";
 import { THEME } from "../constants";
 import useStore from "../store";
+import Tooltip from "./Tooltip";
 
 function ContextMenu() {
   const {
@@ -190,37 +191,17 @@ function ContextMenu() {
           </div>
           <div style={{ borderTop: `1px solid ${THEME.divider}` }}>
             {/* propagate box forward with csrt (manual box -> track across frames) */}
-            <div
-              onClick={() => {
-                if (isPropagating) return;
-                propagateBox(contextMenu.bboxId);
-                useStore.setState({ contextMenu: null });
-              }}
-              style={{
-                padding: "6px 12px",
-                cursor: isPropagating ? "default" : "pointer",
-                color: isPropagating ? THEME.faint : THEME.text,
-              }}
-              onMouseEnter={(e) =>
-                (e.currentTarget.style.background = THEME.hover)
-              }
-              onMouseLeave={(e) =>
-                (e.currentTarget.style.background = "transparent")
-              }
-            >
-              {isPropagating ? "Propagating…" : "Propagate forward (P)"}
-            </div>
-            <div style={{ borderTop: `1px solid ${THEME.divider}` }}>
-              {/* tag bbox as outlier */}
+            <Tooltip text="track object until it leaves">
               <div
                 onClick={() => {
-                  confirmOutlier(contextMenu.bboxId);
+                  if (isPropagating) return;
+                  propagateBox(contextMenu.bboxId);
                   useStore.setState({ contextMenu: null });
                 }}
                 style={{
                   padding: "6px 12px",
-                  cursor: "pointer",
-                  color: THEME.text,
+                  cursor: isPropagating ? "default" : "pointer",
+                  color: isPropagating ? THEME.faint : THEME.text,
                 }}
                 onMouseEnter={(e) =>
                   (e.currentTarget.style.background = THEME.hover)
@@ -229,63 +210,91 @@ function ContextMenu() {
                   (e.currentTarget.style.background = "transparent")
                 }
               >
-                Mark as outlier (G)
+                {isPropagating ? "Propagating…" : "Propagate forward (P)"}
               </div>
+            </Tooltip>
+            <div style={{ borderTop: `1px solid ${THEME.divider}` }}>
+              {/* tag bbox as outlier */}
+              <Tooltip text="flags wrongly labelled box">
+                <div
+                  onClick={() => {
+                    confirmOutlier(contextMenu.bboxId);
+                    useStore.setState({ contextMenu: null });
+                  }}
+                  style={{
+                    padding: "6px 12px",
+                    cursor: "pointer",
+                    color: THEME.text,
+                  }}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.background = THEME.hover)
+                  }
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.background = "transparent")
+                  }
+                >
+                  Mark as outlier (G)
+                </div>
+              </Tooltip>
             </div>
           </div>
           <div style={{ borderTop: `1px solid ${THEME.divider}` }}>
             {/* track this box forward + tag every same-class box it hits as false-alarm */}
-            <div
-              onClick={() => {
-                if (isMarkingFa) return;
-                markFaTrack(contextMenu.bboxId);
-                useStore.setState({ contextMenu: null });
-              }}
-              style={{
-                padding: "6px 12px",
-                cursor: isMarkingFa ? "default" : "pointer",
-                color: isMarkingFa ? THEME.faint : THEME.text,
-              }}
-              onMouseEnter={(e) =>
-                (e.currentTarget.style.background = THEME.hover)
-              }
-              onMouseLeave={(e) =>
-                (e.currentTarget.style.background = "transparent")
-              }
-            >
-              {isMarkingFa ? "Marking FA…" : "Mark as FA (F)"}
-            </div>
+            <Tooltip text="track object, tag as false-alarm">
+              <div
+                onClick={() => {
+                  if (isMarkingFa) return;
+                  markFaTrack(contextMenu.bboxId);
+                  useStore.setState({ contextMenu: null });
+                }}
+                style={{
+                  padding: "6px 12px",
+                  cursor: isMarkingFa ? "default" : "pointer",
+                  color: isMarkingFa ? THEME.faint : THEME.text,
+                }}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.background = THEME.hover)
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.background = "transparent")
+                }
+              >
+                {isMarkingFa ? "Marking FA…" : "Mark as FA (F)"}
+              </div>
+            </Tooltip>
             {/* same-class toggle: on = only tag boxes matching the seed's class (mislabel case);
                 off = tag any class the track hits (label-flickering FA, e.g. car/van/truck) */}
-            <div
-              onClick={(e) => {
-                e.stopPropagation(); // toggle only, don't fire the mark or close the menu
-                useStore.setState({ faMatchClass: !faMatchClass });
-              }}
-              style={{
-                padding: "2px 12px 6px 12px",
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                cursor: "pointer",
-                fontSize: 11,
-                color: THEME.label,
-              }}
-              onMouseEnter={(e) =>
-                (e.currentTarget.style.background = THEME.hover)
-              }
-              onMouseLeave={(e) =>
-                (e.currentTarget.style.background = "transparent")
-              }
-            >
-              <input
-                type="checkbox"
-                checked={faMatchClass}
-                onChange={() => {}}
-                style={{ pointerEvents: "none" }}
-              />
-              same class only
-            </div>
+            <Tooltip text="on = same class only. off = any class the track passes">
+              <div
+                onClick={(e) => {
+                  e.stopPropagation(); // toggle only, don't fire the mark or close the menu
+                  useStore.setState({ faMatchClass: !faMatchClass });
+                }}
+                style={{
+                  padding: "2px 12px 6px 12px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  cursor: "pointer",
+                  fontSize: 11,
+                  color: THEME.label,
+                }}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.background = THEME.hover)
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.background = "transparent")
+                }
+              >
+                <input
+                  type="checkbox"
+                  checked={faMatchClass}
+                  onChange={() => {}}
+                  style={{ pointerEvents: "none" }}
+                />
+                same class only
+              </div>
+            </Tooltip>
           </div>
           <div style={{ borderTop: `1px solid ${THEME.divider}` }}>
             {/* delete annotation button */}

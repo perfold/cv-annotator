@@ -1,5 +1,6 @@
 import useStore from "../../store";
 import { OUTLIER_COLOR, THEME } from "../../constants";
+import Tooltip from "../Tooltip";
 
 function OutliersPanel() {
   const {
@@ -27,23 +28,27 @@ function OutliersPanel() {
         }}
       >
         {/* false-alarm removal, deletes every box tagged "false-alarm" */}
-        <button
-          style={{ flex: 1 }}
-          tabIndex={-1}
-          disabled={!videoName}
-          onClick={removeAllFa}
-        >
-          Remove all FA (D)
-        </button>
+        <Tooltip text="deletes every false-alarm box at once">
+          <button
+            style={{ flex: 1 }}
+            tabIndex={-1}
+            disabled={!videoName}
+            onClick={removeAllFa}
+          >
+            Remove all FA (D)
+          </button>
+        </Tooltip>
         {/* remove outlier button */}
-        <button
-          style={{ flex: 1 }}
-          tabIndex={-1}
-          disabled={!videoName}
-          onClick={removeAllOutliers}
-        >
-          Remove all Outliers (R)
-        </button>
+        <Tooltip text="deletes every flagged box at once">
+          <button
+            style={{ flex: 1 }}
+            tabIndex={-1}
+            disabled={!videoName}
+            onClick={removeAllOutliers}
+          >
+            Remove all Outliers (R)
+          </button>
+        </Tooltip>
       </div>
 
       {/* outlier detection section */}
@@ -66,15 +71,17 @@ function OutliersPanel() {
             marginBottom: 4,
           }}
         >
-          <label
-            style={{
-              fontSize: 11,
-              width: 50,
-              flexShrink: 0,
-            }}
-          >
-            Sensitivity: {embPctThresh.toFixed(1)}
-          </label>
+          <Tooltip text="higher = flag less. lower = flags more">
+            <label
+              style={{
+                fontSize: 11,
+                width: 50,
+                flexShrink: 0,
+              }}
+            >
+              Sensitivity: {embPctThresh.toFixed(1)}
+            </label>
+          </Tooltip>
           <input
             type="range"
             min={2.0}
@@ -97,15 +104,17 @@ function OutliersPanel() {
             marginBottom: 8,
           }}
         >
-          <label
-            style={{
-              fontSize: 11,
-              width: 50,
-              flexShrink: 0,
-            }}
-          >
-            Rare: ≤{rarePctThresh.toFixed(1)}%
-          </label>
+          <Tooltip text="flag classes almost never used">
+            <label
+              style={{
+                fontSize: 11,
+                width: 50,
+                flexShrink: 0,
+              }}
+            >
+              Rare: ≤{rarePctThresh.toFixed(1)}%
+            </label>
+          </Tooltip>
           <input
             type="range"
             min={0.1}
@@ -120,14 +129,16 @@ function OutliersPanel() {
         </div>
 
         {/* scan button */}
-        <button
-          style={{ width: "100%", marginBottom: 8 }}
-          tabIndex={-1}
-          disabled={!videoName || isScanning}
-          onClick={scanOutliers}
-        >
-          {isScanning ? "Scanning..." : "Scan for Outliers (S)"}
-        </button>
+        <Tooltip text="finds weird-looking + rare boxes to check">
+          <button
+            style={{ width: "100%", marginBottom: 8 }}
+            tabIndex={-1}
+            disabled={!videoName || isScanning}
+            onClick={scanOutliers}
+          >
+            {isScanning ? "Scanning..." : "Scan for Outliers (S)"}
+          </button>
+        </Tooltip>
 
         {/* outlier list */}
         {outliers.length === 0 ? (
@@ -146,13 +157,15 @@ function OutliersPanel() {
               {outliers.length} outlier{outliers.length > 1 ? "s" : ""} found
             </p>
             {/* tag every listed outlier at once */}
-            <button
-              style={{ width: "100%", marginBottom: 4 }}
-              tabIndex={-1}
-              onClick={confirmAllOutliers}
-            >
-              Tag ALL as outlier
-            </button>
+            <Tooltip text="marks the whole found list as outliers">
+              <button
+                style={{ width: "100%", marginBottom: 4 }}
+                tabIndex={-1}
+                onClick={confirmAllOutliers}
+              >
+                Tag ALL as outlier
+              </button>
+            </Tooltip>
             <ul
               style={{
                 listStyle: "none",
