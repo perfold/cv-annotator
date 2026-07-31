@@ -1313,11 +1313,21 @@ const useStore = create((set, get) => ({
 
     const now = formatDate(new Date());
 
+    // class names are user-editable since the rename feature, so an & or < in one
+    // would produce xml nothing can parse. not escaping tag names below - they are
+    // used as attribute NAMES, where escaping would not make them valid anyway
+    const esc = (s) =>
+      String(s ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+
     const labelsXml = classes
       .map(
         (cls) => `
         <label>
-          <name>${cls}</name>
+          <name>${esc(cls)}</name>
           <color>${classColors[cls] ?? "#ffffff"}</color>
           <type>any</type>
           <attributes>
@@ -1343,7 +1353,7 @@ const useStore = create((set, get) => ({
           .join(" ");
 
         tracks.push(
-          `  <track id="${trackId}" label="${box.className}" source="manual">\n` +
+          `  <track id="${trackId}" label="${esc(box.className)}" source="manual">\n` +
             `    <box frame="${frameIndex}" keyframe="1" outside="0" ${tagAttrs} xtl="${xtl}" ytl="${ytl}" xbr="${xbr}" ybr="${ybr}" z_order="0"> </box>\n` +
             `    <box frame="${nextFrame}" keyframe="1" outside="1" ${tagAttrs} xtl="${xtl}" ytl="${ytl}" xbr="${xbr}" ybr="${ybr}" z_order="0"> </box>\n` +
             `  </track>`,
@@ -1356,8 +1366,10 @@ const useStore = create((set, get) => ({
   <annotations>
     <version>1.1</version>
     <meta>
-      <job>
+      <task>
         <id>1</id>
+        <name>${esc(videoName)}</name>
+        <source>${esc(videoName)}</source>
         <size>${frameCount}</size>
         <mode>interpolation</mode>
         <overlap>0</overlap>
@@ -1383,12 +1395,12 @@ const useStore = create((set, get) => ({
         <assignee></assignee>
         <labels>${labelsXml}
         </labels>
-      </job>
+        <original_size>
+          <width>${origW}</width>
+          <height>${origH}</height>
+        </original_size>
+      </task>
       <dumped>${now}</dumped>
-      <original_size>
-        <width>${origW}</width>
-        <height>${origH}</height>
-      </original_size>
     </meta>
   ${tracks.join("\n")}
   </annotations>`;
