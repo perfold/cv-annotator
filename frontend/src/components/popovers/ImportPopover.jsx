@@ -10,6 +10,7 @@ function ImportPopover() {
     videoName,
     quality,
     isExtracting,
+    busy,
     loadFrameFolder,
     changeQuality,
     ui,
@@ -29,20 +30,22 @@ function ImportPopover() {
   }, [isOpen, videoName]);
 
   usePopoverKeys({
-    "import:upload": () => document.getElementById("video-input").click(),
+    "import:upload": () =>
+      !busy && document.getElementById("video-input").click(),
     "import:videos": () =>
       listRef.current?.querySelector("button:not([disabled])")?.focus(),
     "import:xml": () => {
-      if (videoName) document.getElementById("import-xml-input").click();
+      if (videoName && !busy)
+        document.getElementById("import-xml-input").click();
     },
     "import:path": () => pathRef.current?.focus(),
     // quality re-extracts frames, so it needs a loaded video
     "import:quality:low": () =>
-      videoName && !isExtracting && changeQuality("low"),
+      videoName && !isExtracting && !busy && changeQuality("low"),
     "import:quality:medium": () =>
-      videoName && !isExtracting && changeQuality("medium"),
+      videoName && !isExtracting && !busy && changeQuality("medium"),
     "import:quality:high": () =>
-      videoName && !isExtracting && changeQuality("high"),
+      videoName && !isExtracting && !busy && changeQuality("high"),
   });
 
   // arrow keys to navigate the video list
@@ -99,6 +102,7 @@ function ImportPopover() {
           <button
             style={{ width: "100%" }}
             tabIndex={-1}
+            disabled={!!busy}
             onClick={() => document.getElementById("video-input").click()}
           >
             Upload Video (U)
@@ -111,6 +115,7 @@ function ImportPopover() {
               type="text"
               placeholder="Folder Path (P)"
               id="folder-path-input"
+              disabled={!!busy}
               style={{ width: "100%", boxSizing: "border-box" }}
               onKeyDown={(e) => {
                 e.stopPropagation();
@@ -125,7 +130,7 @@ function ImportPopover() {
             <button
               style={{ width: "100%" }}
               tabIndex={-1}
-              disabled={!videoName}
+              disabled={!videoName || !!busy}
               onClick={() =>
                 document.getElementById("import-xml-input").click()
               }
@@ -150,7 +155,7 @@ function ImportPopover() {
                 <Tooltip key={q} text="change image quality">
                   <button
                     tabIndex={-1}
-                    disabled={isExtracting}
+                    disabled={isExtracting || !!busy}
                     onClick={() => changeQuality(q)}
                     style={{
                       flex: 1,
@@ -211,7 +216,7 @@ function ImportPopover() {
               return (
                 <button
                   key={v.video_name}
-                  disabled={isExtracting || isCurrent}
+                  disabled={isExtracting || isCurrent || !!busy}
                   onClick={async () => {
                     await openVideo(v.video_name);
                     setPopover(null);

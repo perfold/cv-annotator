@@ -16,6 +16,7 @@ import ModelsPopover from "./components/popovers/ModelsPopover";
 import ExportSelectorPopover from "./components/popovers/ExportSelectorPopover";
 import VideoScrubber from "./components/VideoScrubber";
 import ContextMenu from "./components/ContextMenu";
+import ProgressBar from "./components/ProgressBar";
 import { OUTLIER_COLOR } from "./constants";
 
 function App() {
@@ -468,6 +469,7 @@ function App() {
                 </div>
               </div>
             )}
+            <ProgressBar />
           </div>
 
           {/* right column: whichever panels are docked right, stacked */}

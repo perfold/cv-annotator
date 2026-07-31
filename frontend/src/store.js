@@ -31,6 +31,9 @@ const useStore = create((set, get) => ({
   quality: "low", // set quality of extracted frames, default low
   isExtracting: false,
 
+  // null when nothing is running.
+  busy: null,
+
   // class labels
   classes: [], // list of existing classes
   newClassName: "", // temporary, to hold half-typed labels
@@ -259,6 +262,37 @@ const useStore = create((set, get) => ({
   },
 
   // upload video function
+  startBusy: (label) =>
+    set((s) => ({
+      busy: { label, done: 0, total: 0 },
+      ui: { ...s.ui, openPopover: null },
+    })),
+
+  updateBusy: (done, total, label) =>
+    set((s) =>
+      s.busy
+        ? { busy: { ...s.busy, done, total, label: label ?? s.busy.label } }
+        : {},
+    ),
+
+  endBusy: () => set({ busy: null }),
+
+  pollProgress: (path, intervalMs = 500) => {
+    let sawRunning = false;
+    const id = setInterval(async () => {
+      try {
+        const res = await fetch(`http://localhost:8000/${path}`);
+        const d = await res.json();
+        if (d.status === "idle") return;
+        if (d.status === "done" && !sawRunning) return;
+        sawRunning = true;
+        get().updateBusy(d.done, d.total);
+        if (d.status === "done") clearInterval(id);
+      } catch {}
+    }, intervalMs);
+    return () => clearInterval(id);
+  },
+
   uploadVideo: async (file) => {
     if (!file) return;
     const { quality, loadSession } = get();
@@ -279,8 +313,19 @@ const useStore = create((set, get) => ({
       formData.append("quality", QUALITY_PRESETS[quality]);
       formData.append("sequence_name", suggestion);
 
+      const { startBusy, updateBusy, endBusy, pollProgress } = get();
+      startBusy(`Uploading ${suggestion}`);
+      const stopPolling = pollProgress(`extract-progress/${suggestion}`);
+
       try {
-        res = await axios.post("http://localhost:8000/upload-video", formData);
+        res = await axios.post("http://localhost:8000/upload-video", formData, {
+          timeout: 0,
+          onUploadProgress: (e) => {
+            if (e.total) updateBusy(e.loaded, e.total);
+            if (e.total && e.loaded >= e.total)
+              updateBusy(0, 0, `Extracting ${suggestion}`);
+          },
+        });
       } catch (err) {
         const status = err.response?.status;
         const detail = err.response?.data?.detail;
@@ -290,6 +335,9 @@ const useStore = create((set, get) => ({
         }
         alert("Upload failed: " + (detail ?? err.message));
         return;
+      } finally {
+        stopPolling();
+        endBusy();
       }
     }
 
@@ -410,6 +458,7 @@ const useStore = create((set, get) => ({
       suggestion = input.trim();
 
       try {
+        get().startBusy(`Loading ${suggestion}`);
         res = await axios.post("http://localhost:8000/load-frames-from-path", {
           folder_path: folderPath,
           sequence_name: suggestion,
@@ -423,6 +472,8 @@ const useStore = create((set, get) => ({
         }
         alert("Failed to load folder: " + (detail ?? err.message));
         return;
+      } finally {
+        get().endBusy();
       }
     }
 
@@ -472,6 +523,9 @@ const useStore = create((set, get) => ({
       classes,
       classColors,
       pushHistory,
+      startBusy,
+      endBusy,
+      pollProgress,
     } = get();
     if (!videoName) return;
     const { origW, origH } = imageDims;
@@ -482,6 +536,8 @@ const useStore = create((set, get) => ({
 
     set({ isRunningYolo: true });
     pushHistory();
+    startBusy("Running YOLOv7-tiny");
+    const stopPolling = pollProgress(`yolo-progress/${videoName}`);
 
     try {
       const res = await axios.post(
@@ -540,19 +596,36 @@ const useStore = create((set, get) => ({
       console.error(err);
       alert("YOLO inference failed. Check the console.");
     } finally {
+      stopPolling();
+      endBusy();
       set({ isRunningYolo: false });
     }
   },
 
   // trigger re-extraction when quality changes
   changeQuality: async (newQuality) => {
-    const { videoName, quality } = get();
+    const { videoName, quality, startBusy, endBusy, pollProgress } = get();
     if (!videoName || newQuality === quality) return;
     set({ quality: newQuality, isExtracting: true });
-    await axios.post(`http://localhost:8000/reextract/${videoName}`, {
-      quality: QUALITY_PRESETS[newQuality],
-    });
-    set({ isExtracting: false });
+    startBusy(`Re-extracting ${videoName}`);
+    const stopPolling = pollProgress(`extract-progress/${videoName}`);
+    try {
+      await axios.post(
+        `http://localhost:8000/reextract/${videoName}`,
+        {
+          quality: QUALITY_PRESETS[newQuality],
+        },
+        { timeout: 0 },
+      );
+    } catch (err) {
+      alert(
+        "Re-extraction failed: " + (err.response?.data?.detail ?? err.message),
+      );
+    } finally {
+      stopPolling();
+      endBusy();
+      set({ isExtracting: false }); // was previously left true on error, locking the quality buttons
+    }
   },
 
   // frame nav
@@ -1498,12 +1571,14 @@ const useStore = create((set, get) => ({
     }
   },
 
-  // compute osnet embeddings for all annotated bboxes, cache to data/output/video-name/embeddings.json
+  // compute dinov3 embeddings for all annotated bboxes, cache to data/output/video-name/embeddings.json
   computeEmbeddings: async (force = false) => {
     // force=true to recompute even if cache exists (e.g. after re-annotating)
-    const { videoName } = get();
+    const { videoName, startBusy, endBusy, pollProgress } = get();
     if (!videoName) return;
     set({ embeddingStatus: "computing" });
+    startBusy("Computing embeddings");
+    const stopPolling = pollProgress(`embeddings-progress/${videoName}`);
     try {
       const res = await fetch(`http://localhost:8000/embeddings/${videoName}`, {
         method: "POST",
@@ -1521,6 +1596,9 @@ const useStore = create((set, get) => ({
       console.error(err);
       alert("Embedding computation failed. Check the console.");
       set({ embeddingStatus: "idle" });
+    } finally {
+      stopPolling();
+      endBusy();
     }
   },
 

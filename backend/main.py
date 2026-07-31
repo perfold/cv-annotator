@@ -57,6 +57,9 @@ sam = FastSAM(str(SAM_WEIGHTS))
 
 EMBEDDINGS_CACHE_FILE = "embeddings.npz" # {bbox_id: [float, ...]} per video
 
+EMBEDDING_PROGRESS = {}
+YOLO_PROGRESS = {}
+
 # check if opencv-contrib-python is installed
 if not hasattr(cv2, "TrackerCSRT_create"):
     raise RuntimeError(
@@ -192,6 +195,31 @@ def get_fps(video_path: str) -> float:
     num, den = map(int, raw.split("/"))
     return num / den
 
+EXTRACTION_PROGRESS = {}
+
+def probe_frame_total(video_path: str, fps: float) -> int:
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe", "-v", "error",
+                "-select_streams", "v:0",
+                "-show_entries", "stream=nb_frames:format=duration",
+                "-of", "json",
+                video_path,
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        info = json.loads(result.stdout)
+        nb = info.get("streams", [{}])[0].get("nb_frames")
+        if nb is not None and str(nb).isdigit() and int(nb) > 0:
+            return int(nb)
+        duration = float(info.get("format", {}).get("duration", 0) or 0)
+        return int(round(duration * fps)) if duration > 0 and fps > 0 else 0
+    except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError, IndexError):
+        return 0 
+
 # save extraction quality into a .json in output folder
 def save_extraction_metadata(output_folder: str, quality: int, fps: float | None = None):
     path = Path(output_folder) / EXTRACTION_METADATA_FILE
@@ -310,7 +338,16 @@ async def upload_video(
         if already_extracted: # wipe stale frames before re-extracting
             for f in Path(output_folder).glob("*.jpg"):
                 f.unlink()
-        frame_count = extract_frames(video_path, output_folder, quality, fps)
+        EXTRACTION_PROGRESS[video_name] = {
+            "total": probe_frame_total(video_path, fps),
+            "status": "extracting",
+        }
+        try:
+            frame_count = await asyncio.get_event_loop().run_in_executor(
+                None, extract_frames, video_path, output_folder, quality, fps
+            )
+        finally:
+            EXTRACTION_PROGRESS[video_name]["status"] = "done" 
 
     return {
         "video_name": video_name,
@@ -375,8 +412,26 @@ async def reextract_frames(video_name: str, payload: dict = Body(...)):
     for f in Path(output_folder).glob("*.jpg"):
         f.unlink()
 
-    frame_count = extract_frames(video_path, output_folder, quality)
+    EXTRACTION_PROGRESS[video_name] = {
+        "total": probe_frame_total(video_path, get_fps(video_path)),
+        "status": "extracting",
+    }
+    try:
+        frame_count = await asyncio.get_event_loop().run_in_executor(
+            None, extract_frames, video_path, output_folder, quality
+        ) 
+    finally:
+        EXTRACTION_PROGRESS[video_name]["status"] = "done"
     return {"frame_count": frame_count}
+
+# frame extraction process 
+@app.get("/extract-progress/{video_name}")
+def extraction_progress(video_name: str):
+    entry = EXTRACTION_PROGRESS.get(video_name)
+    if entry is None:
+        return {"status": "idle", "done": 0, "total": 0}
+    done = len(list_frames(OUTPUT_DIR / video_name)) 
+    return {"status": entry["status"], "done": done, "total": entry["total"]}
 
 # function to get frame
 @app.get("/frame/{video_name}/{frame_idx}")
@@ -421,42 +476,62 @@ async def run_yolo(video_name: str, payload: dict = Body(...)):
 
     # if no cache yet, run yolo at conf=0.01
     if not cache_path.exists():
-        dataset    = LoadImages(str(frames_dir), img_size=640, stride=stride)
-        raw_cache  = {}   # frame_idx -> list of dets at conf=0.01
+        def run_detection():
+            dataset    = LoadImages(str(frames_dir), img_size=640, stride=stride)
+            raw_cache  = {}   # frame_idx -> list of dets at conf=0.01
 
-        # build filename -> sorted index mapping so frame_idx is consistent with get_frame
-        all_frames = list_frames(frames_dir)
-        filename_to_idx = {f.name: i for i, f in enumerate(all_frames)}
+            all_frames = list_frames(frames_dir)
+            filename_to_idx = {f.name: i for i, f in enumerate(all_frames)}
 
-        for path, img, im0, _ in dataset:
-            frame_idx = filename_to_idx.get(Path(path).name, 0)
-            img = torch.from_numpy(img).to(device).float() / 255.0
-            if img.ndimension() == 3:
-                img = img.unsqueeze(0)
+            seen = 0
+            for path, img, im0, _ in dataset:
+                frame_idx = filename_to_idx.get(Path(path).name, 0)
+                seen += 1
+                YOLO_PROGRESS[video_name] = {
+                    "done": seen,
+                    "total": len(all_frames),
+                    "status": "running",
+                } 
+                img = torch.from_numpy(img).to(device).float() / 255.0
+                if img.ndimension() == 3:
+                    img = img.unsqueeze(0)
 
-            with torch.no_grad():
-                pred = model(img)[0]
+                with torch.no_grad():
+                    pred = model(img)[0]
 
-            # use a very low base threshold so we cache everything
-            pred = non_max_suppression(pred, conf_thres=0.01, iou_thres=0.45)
+                # use a very low base threshold so we cache everything
+                pred = non_max_suppression(pred, conf_thres=0.01, iou_thres=0.45)
 
-            frame_dets = []
-            for det in pred:
-                if det is None or not len(det):
-                    continue
-                det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
-                for *xyxy, conf, cls in det:
-                    frame_dets.append({
-                        "class_name": names[int(cls)],
-                        "xtl":        round(float(xyxy[0]), 2),
-                        "ytl":        round(float(xyxy[1]), 2),
-                        "xbr":        round(float(xyxy[2]), 2),
-                        "ybr":        round(float(xyxy[3]), 2),
-                        "confidence": round(float(conf), 4),
-                    })
+                frame_dets = []
+                for det in pred:
+                    if det is None or not len(det):
+                        continue
+                    det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
+                    for *xyxy, conf, cls in det:
+                        frame_dets.append({
+                            "class_name": names[int(cls)],
+                            "xtl":        round(float(xyxy[0]), 2),
+                            "ytl":        round(float(xyxy[1]), 2),
+                            "xbr":        round(float(xyxy[2]), 2),
+                            "ybr":        round(float(xyxy[3]), 2),
+                            "confidence": round(float(conf), 4),
+                        })
 
-            if frame_dets:
-                raw_cache[frame_idx] = frame_dets
+                if frame_dets:
+                    raw_cache[frame_idx] = frame_dets
+
+            return raw_cache
+
+        YOLO_PROGRESS[video_name] = {
+            "done": 0,
+            "total": len(list_frames(frames_dir)),
+            "status": "running",
+        }  # total up front so the bar never starts blank
+        loop = asyncio.get_event_loop()
+        try:
+            raw_cache = await loop.run_in_executor(None, run_detection)
+        finally:
+            YOLO_PROGRESS[video_name]["status"] = "done"
 
         with open(cache_path, "w") as f:
             json.dump(raw_cache, f)
@@ -1164,7 +1239,7 @@ async def export_chips(payload: dict = Body(...)):
 
     return {"total_chips": total_chips, "skipped_videos": skipped}
 
-# compute and cache osnet embeddings for all annotated bboxes in a video
+# compute and cache dinov3 embeddings for all annotated bboxes in a video
 @app.post("/embeddings/{video_name}")
 async def compute_embeddings(video_name: str, payload: dict = Body(...)):
     force = payload.get("force", False) # if true, recompute even if cache exists
@@ -1227,7 +1302,7 @@ async def compute_embeddings(video_name: str, payload: dict = Body(...)):
                 continue
             crops.append((frame_path, bid, (left, top, right, bottom)))
 
-    # run osnet inference 
+    # run dinov3 inference 
     def run_inference():
         from collections import defaultdict
         # group crops by frame so each frame is opened once, embedded, then released. keeps memory flat over long videos
@@ -1244,12 +1319,21 @@ async def compute_embeddings(video_name: str, payload: dict = Body(...)):
             for (bid, _), vec in zip(items, vecs):
                 embeddings[bid] = vec
             done += len(items)
+            EMBEDDING_PROGRESS[video_name] = {
+                "done": done,
+                "total": len(crops),
+                "status": "computing",
+            } 
             print(f"embedding progress: {done}/{len(crops)} chips") # per-frame, so it actually updates
             # img and chips go out of scope each iteration, not retained
         return embeddings
 
+    EMBEDDING_PROGRESS[video_name] = {"done": 0, "total": len(crops), "status": "computing"}
     loop = asyncio.get_event_loop()
-    embeddings = await loop.run_in_executor(None, run_inference)
+    try:
+        embeddings = await loop.run_in_executor(None, run_inference)
+    finally:
+        EMBEDDING_PROGRESS[video_name]["status"] = "done"
 
     ids = list(embeddings.keys())
     vecs = np.array([embeddings[k] for k in ids], dtype=np.float32)
@@ -1274,6 +1358,22 @@ def embeddings_status(video_name: str):
         return {"status": "idle"}
     count = len(np.load(cache_path, allow_pickle=True)["ids"])
     return {"status": "ready", "bbox_count": count}
+
+# get yolo inference progress
+@app.get("/yolo-progress/{video_name}")
+def yolo_progress(video_name: str):
+    entry = YOLO_PROGRESS.get(video_name)
+    if entry is None:
+        return {"status": "idle", "done": 0, "total": 0}
+    return entry
+
+# get chip embedding progress
+@app.get("/embeddings-progress/{video_name}")
+def embeddings_progress(video_name: str):
+    entry = EMBEDDING_PROGRESS.get(video_name)
+    if entry is None:
+        return {"status": "idle", "done": 0, "total": 0}
+    return entry
 
 # add annotation to outlier list
 def add_outlier(outliers, flagged_ids, frame_idx, bbox_id, cls, reason, detail, timestamp):
